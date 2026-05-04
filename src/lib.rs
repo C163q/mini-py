@@ -7,7 +7,7 @@ use crate::{error::InterpreterError, types::PyType};
 
 pub mod error;
 pub mod func;
-pub mod interprete;
+pub mod lexer;
 pub mod types;
 pub mod var;
 
