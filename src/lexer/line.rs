@@ -170,15 +170,24 @@ fn get_line_content(
         }
     }
 
+    fn push_space_if_needed(cat: &mut LineConcatenator) {
+        if !cat.get().is_empty() {
+            cat.append(" ");
+        }
+    }
+
     if line.ends_with('\\') {
+        push_space_if_needed(&mut last.concatenator);
         last.concatenator.append(line.strip_suffix('\\').unwrap());
         Ok(None)
     } else if !last.bracket_stack.is_empty() {
+        push_space_if_needed(&mut last.concatenator);
         last.concatenator.append(line);
         Ok(None)
     } else {
         let mut result = last.concatenator.get().to_string();
         if !result.is_empty() {
+            result.push(' ');
             result.push_str(line);
         } else {
             result = line.to_string();
