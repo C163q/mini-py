@@ -60,6 +60,16 @@ impl LineConcatenator {
     }
 }
 
+/// Line here does NOT mean that there is no '\n', for example:
+///
+/// ```python
+/// s = """
+/// value1
+/// value2
+/// """
+/// ```
+///
+/// would be considered as a single line, and the content of the line would be `s = """\nvalue1\nvalue2\n"""`.
 pub struct Line {
     pub indent: Vec<Indent>,
     pub content: String,
