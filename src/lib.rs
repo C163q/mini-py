@@ -1,11 +1,13 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
+    io::{self, Write},
     sync::{Arc, Mutex},
 };
 
-use crate::{error::InterpreterError, types::PyType};
+use crate::{error::InterpreterError, lexer::line::LineContext, types::PyType};
 
 pub mod error;
+pub mod eval;
 pub mod func;
 pub mod lexer;
 pub mod types;
@@ -13,6 +15,8 @@ pub mod var;
 
 pub struct Interpreter {
     type_mapper: Mutex<HashMap<String, Arc<PyType>>>,
+    line_context: Mutex<LineContext>,
+    repl_output: Option<io::Stdout>,
 }
 
 impl Default for Interpreter {
@@ -30,7 +34,7 @@ impl Interpreter {
 
     pub fn new_arc() -> Arc<Self> {
         let interpreter = Arc::new(Self::build());
-        types::init::register_types(interpreter.clone());
+        interpreter.clone().init_builtin_types();
         interpreter
     }
 
@@ -38,7 +42,13 @@ impl Interpreter {
     pub fn build() -> Self {
         Self {
             type_mapper: Mutex::new(HashMap::new()),
+            line_context: Mutex::new(LineContext::new()),
+            repl_output: None,
         }
+    }
+
+    pub fn init_builtin_types(self: Arc<Self>) {
+        types::init::register_types(self);
     }
 
     /// Registers a new type with the interpreter. If a type with the same name already exists, an
@@ -56,12 +66,23 @@ impl Interpreter {
         }
     }
 
+    pub fn open_repl_output(&mut self) {
+        if self.repl_output.is_none() {
+            self.repl_output = Some(io::stdout());
+        }
+    }
+
     pub fn get_type(&self, name: &str) -> Option<Arc<PyType>> {
         self.type_mapper.lock().unwrap().get(name).cloned()
     }
 
     pub fn eval_line(self: Arc<Self>, line: &str) -> Result<(), InterpreterError> {
-        // TODO
+        let output = eval::eval_line(self.clone(), line)?;
+        if let Some(output) = output
+            && let Some(repl_output) = &self.repl_output
+        {
+            writeln!(repl_output.lock(), "{}", output).ok();
+        }
         Ok(())
     }
 }

@@ -1,4 +1,7 @@
-use std::num::NonZero;
+use std::{
+    num::NonZero,
+    sync::{Mutex, MutexGuard},
+};
 
 use crate::{error::InterpreterError, lexer::indent::Indent};
 
@@ -82,7 +85,7 @@ impl Line {
 }
 
 macro_rules! get_line_branch {
-    ($current:tt, $other:tt, $last_indent:ident, $last:ident) => {
+    ($current:tt, $other:tt, $last_indent:ident, $last:tt) => {
         if let Some(indent) = $last_indent.as_mut() {
             match indent {
                 Indent::$current(count) => {
@@ -101,14 +104,15 @@ macro_rules! get_line_branch {
     };
 }
 
-pub fn get_line(last: &mut LineContext, line: &str) -> Result<Option<Line>, InterpreterError> {
-    if last.concatenator.get().is_empty() {
+pub fn get_line(last: &Mutex<LineContext>, line: &str) -> Result<Option<Line>, InterpreterError> {
+    if last.lock().unwrap().concatenator.get().is_empty() {
         let line = line.trim_end();
         if line.is_empty() {
             return Ok(None);
         }
         let mut last_indent: Option<Indent> = None;
         for ch in line.chars() {
+            let mut last = last.lock().unwrap();
             match ch {
                 ' ' => {
                     get_line_branch!(Space, Tab, last_indent, last);
@@ -126,9 +130,10 @@ pub fn get_line(last: &mut LineContext, line: &str) -> Result<Option<Line>, Inte
         }
     }
 
-    let line_content = get_line_content(last, line)?;
+    let line_content = get_line_content(last.lock().unwrap(), line)?;
     match line_content {
         Some(content) => {
+            let mut last = last.lock().unwrap();
             let result = Ok(Some(Line::new(last.indents.clone(), content)));
             last.indents.clear();
             result
@@ -138,7 +143,7 @@ pub fn get_line(last: &mut LineContext, line: &str) -> Result<Option<Line>, Inte
 }
 
 fn get_line_content(
-    last: &mut LineContext,
+    mut last: MutexGuard<'_, LineContext>,
     line: &str,
 ) -> Result<Option<String>, InterpreterError> {
     // We DO NOT handle the leading spaces here.

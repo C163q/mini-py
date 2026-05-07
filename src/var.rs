@@ -1,14 +1,22 @@
 use std::{any::Any, fmt::Debug, sync::Arc};
 
-use crate::types::PyType;
+use crate::{func::PyFunction, types::PyType};
 
 pub trait PyValue: Any {
     fn get_type(&self) -> Arc<PyType>;
+
+    fn get_function(&self, name: &str) -> Option<Arc<PyFunction>> {
+        self.get_type().get_function(name)
+    }
 }
 
 impl<T: PyValue> PyValue for Box<T> {
     fn get_type(&self) -> Arc<PyType> {
         (**self).get_type()
+    }
+
+    fn get_function(&self, name: &str) -> Option<Arc<PyFunction>> {
+        (**self).get_function(name)
     }
 }
 

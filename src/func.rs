@@ -36,4 +36,15 @@ impl PyFunction {
     {
         Self::Builtin(Box::new(func))
     }
+
+    pub fn call(
+        &self,
+        interpreter: Arc<Interpreter>,
+        args: Vec<Box<dyn PyValue>>,
+    ) -> Result<Box<dyn PyValue>, InterpreterError> {
+        match self {
+            PyFunction::Builtin(func) => func(interpreter, args),
+            // PyFunction::UserDefined(func) => func.call(interpreter, args),
+        }
+    }
 }

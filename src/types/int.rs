@@ -16,7 +16,11 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     init::init_type(
         interpreter,
         TYPE_NAME,
-        [def_func_pair!(__str__, PyInt, interpreter, &[TYPE_NAME])],
+        [
+            def_func_pair!(__str__, PyInt, interpreter, &[TYPE_NAME]),
+            def_func_pair!(__pos__, PyInt, interpreter, &[TYPE_NAME]),
+            def_func_pair!(__neg__, PyInt, interpreter, &[TYPE_NAME]),
+        ],
     )
 }
 
@@ -51,5 +55,13 @@ impl Display for PyInt {
 impl PyInt {
     pub fn __str__(&self, interpreter: Arc<Interpreter>) -> PyStr {
         PyStr::new(interpreter, self.value.to_string())
+    }
+
+    pub fn __pos__(&self, interpreter: Arc<Interpreter>) -> PyInt {
+        PyInt::new(interpreter, self.value.clone())
+    }
+
+    pub fn __neg__(&self, interpreter: Arc<Interpreter>) -> PyInt {
+        PyInt::new(interpreter, -self.value.clone())
     }
 }
