@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     Interpreter,
     error::InterpreterError,
-    lexer::ast::{Expr, Number, PrimaryExpr, UnaryExpr, UnaryOp},
+    lexer::ast::{AddExpr, AddOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, UnaryExpr, UnaryOp},
     var::PyValue,
 };
 
@@ -30,22 +30,106 @@ pub fn eval_unary_expr(
     interpreter: Arc<Interpreter>,
     expr: UnaryExpr,
 ) -> Result<Box<dyn PyValue>, InterpreterError> {
+    macro_rules! eval_unary {
+        ($interpreter:ident, $expr:expr, $func:literal) => {{
+            let expr_value = eval_unary_expr($interpreter.clone(), $expr)?;
+            let func = expr_value
+                .get_function($func)
+                .ok_or_else(|| InterpreterError::new(format!("Type does not support {}", $func)))?;
+            func.call($interpreter.clone(), vec![expr_value])
+        }};
+    }
     match expr {
         UnaryExpr::Primary(expr) => eval_primary_expr(interpreter, expr),
         UnaryExpr::Expr { op, expr } => match op {
             UnaryOp::Pos => {
-                let expr_value = eval_unary_expr(interpreter.clone(), *expr)?;
-                let func = expr_value.get_function("__pos__").ok_or_else(|| {
-                    InterpreterError::new("Type does not support __pos__".to_string())
-                })?;
-                func.call(interpreter.clone(), vec![expr_value])
+                eval_unary!(interpreter, *expr, "__pos__")
             }
             UnaryOp::Neg => {
-                let expr_value = eval_unary_expr(interpreter.clone(), *expr)?;
-                let func = expr_value.get_function("__neg__").ok_or_else(|| {
-                    InterpreterError::new("Type does not support __neg__".to_string())
-                })?;
-                func.call(interpreter.clone(), vec![expr_value])
+                eval_unary!(interpreter, *expr, "__neg__")
+            }
+        },
+    }
+}
+
+macro_rules! eval_binary {
+    ($interpreter:ident, $lhs:expr, $eval_lhs:ident, $rhs:expr, $eval_rhs:ident, $func:literal) => {{
+        let lhs = $eval_lhs($interpreter.clone(), $lhs)?;
+        let rhs = $eval_rhs($interpreter.clone(), $rhs)?;
+        let func = lhs
+            .get_function($func)
+            .ok_or_else(|| InterpreterError::new(format!("Type does not support {}", $func)))?;
+        func.call($interpreter.clone(), vec![lhs, rhs])
+    }};
+}
+
+pub fn eval_mul_expr(
+    interpreter: Arc<Interpreter>,
+    expr: crate::lexer::ast::MulExpr,
+) -> Result<Box<dyn PyValue>, InterpreterError> {
+    match expr {
+        MulExpr::Unary(expr) => eval_unary_expr(interpreter, expr),
+        MulExpr::Expr { left, op, right } => match op {
+            MulOp::Mul => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_unary_expr,
+                    *right,
+                    eval_mul_expr,
+                    "__mul__"
+                )
+            }
+            MulOp::FloorDiv => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_unary_expr,
+                    *right,
+                    eval_mul_expr,
+                    "__floordiv__"
+                )
+            }
+            MulOp::Mod => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_unary_expr,
+                    *right,
+                    eval_mul_expr,
+                    "__mod__"
+                )
+            }
+        },
+    }
+}
+
+pub fn eval_add_expr(
+    interpreter: Arc<Interpreter>,
+    expr: AddExpr,
+) -> Result<Box<dyn PyValue>, InterpreterError> {
+    match expr {
+        AddExpr::Mul(expr) => eval_mul_expr(interpreter, expr),
+        AddExpr::Expr { left, op, right } => match op {
+            AddOp::Add => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_mul_expr,
+                    *right,
+                    eval_add_expr,
+                    "__add__"
+                )
+            }
+            AddOp::Sub => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_mul_expr,
+                    *right,
+                    eval_add_expr,
+                    "__sub__"
+                )
             }
         },
     }
@@ -55,5 +139,5 @@ pub fn eval_expr(
     interpreter: Arc<Interpreter>,
     expr: Expr,
 ) -> Result<Box<dyn PyValue>, InterpreterError> {
-    eval_unary_expr(interpreter, expr.value)
+    eval_add_expr(interpreter, expr.value)
 }

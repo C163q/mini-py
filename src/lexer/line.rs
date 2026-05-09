@@ -73,6 +73,7 @@ impl LineConcatenator {
 /// ```
 ///
 /// would be considered as a single line, and the content of the line would be `s = """\nvalue1\nvalue2\n"""`.
+#[derive(Debug, Clone)]
 pub struct Line {
     pub indent: Vec<Indent>,
     pub content: String,

@@ -7,7 +7,7 @@ use crate::{
     error::InterpreterError,
     eval,
     lexer::{
-        ast::{Expr, Number, PrimaryExpr, UnaryExpr, UnaryOp},
+        ast::{AddExpr, AddOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, UnaryExpr, UnaryOp},
         tokenize::{Operator, Separator, Token, TokenKind},
     },
     types::tstr::PyStr,
@@ -62,8 +62,8 @@ fn eval_primary_expr(
     }
     if idx + 2 < tokens.len()
         && tokens[idx].value == TokenKind::Separator(Separator::LeftParen)
-        && tokens[idx + 2].value == TokenKind::Separator(Separator::RightParen)
         && let Some(expr) = eval_expr(interpreter, tokens, idx + 1)
+        && tokens[expr.idx].value == TokenKind::Separator(Separator::RightParen)
     {
         return Some(EvalResult::new(
             expr.idx + 1,
@@ -122,6 +122,102 @@ fn eval_unary_expr(
     None
 }
 
+fn eval_mul_op(
+    _interpreter: Arc<Interpreter>,
+    token: &[Token],
+    idx: usize,
+) -> Option<EvalResult<MulOp>> {
+    if idx >= token.len() {
+        return None;
+    }
+
+    if let TokenKind::Operator(op) = &token[idx].value {
+        match op {
+            Operator::Mul => Some(EvalResult::new(idx + 1, MulOp::Mul)),
+            Operator::FloorDiv => Some(EvalResult::new(idx + 1, MulOp::FloorDiv)),
+            Operator::Mod => Some(EvalResult::new(idx + 1, MulOp::Mod)),
+            Operator::TrueDiv => unimplemented!(),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn eval_mul_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<MulExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if idx + 2 < tokens.len()
+        && let Some(left) = eval_unary_expr(interpreter.clone(), tokens, idx)
+        && let Some(op) = eval_mul_op(interpreter.clone(), tokens, left.idx)
+        && let Some(right) = eval_mul_expr(interpreter.clone(), tokens, op.idx)
+    {
+        return Some(EvalResult::new(
+            right.idx,
+            MulExpr::new_mul(left.value, op.value, right.value),
+        ));
+    }
+
+    if let Some(unary) = eval_unary_expr(interpreter.clone(), tokens, idx) {
+        return Some(EvalResult::new(unary.idx, MulExpr::new_unary(unary.value)));
+    }
+
+    None
+}
+
+fn eval_add_op(
+    _interpreter: Arc<Interpreter>,
+    token: &[Token],
+    idx: usize,
+) -> Option<EvalResult<AddOp>> {
+    if idx >= token.len() {
+        return None;
+    }
+
+    if let TokenKind::Operator(op) = &token[idx].value {
+        match op {
+            Operator::Add => Some(EvalResult::new(idx + 1, AddOp::Add)),
+            Operator::Sub => Some(EvalResult::new(idx + 1, AddOp::Sub)),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn eval_add_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<AddExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if idx + 2 < tokens.len()
+        && let Some(left) = eval_mul_expr(interpreter.clone(), tokens, idx)
+        && let Some(op) = eval_add_op(interpreter.clone(), tokens, left.idx)
+        && let Some(right) = eval_add_expr(interpreter.clone(), tokens, op.idx)
+    {
+        return Some(EvalResult::new(
+            right.idx,
+            AddExpr::new_add(left.value, op.value, right.value),
+        ));
+    }
+
+    if let Some(mul) = eval_mul_expr(interpreter.clone(), tokens, idx) {
+        return Some(EvalResult::new(mul.idx, AddExpr::new_mul(mul.value)));
+    }
+
+    None
+}
+
 fn eval_expr(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
@@ -131,8 +227,8 @@ fn eval_expr(
         return None;
     }
 
-    if let Some(unary) = eval_unary_expr(interpreter, tokens, idx) {
-        return Some(EvalResult::new(unary.idx, Expr::new_unary(unary.value)));
+    if let Some(add) = eval_add_expr(interpreter, tokens, idx) {
+        return Some(EvalResult::new(add.idx, Expr::new_add(add.value)));
     }
 
     None

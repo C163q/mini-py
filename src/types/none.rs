@@ -39,7 +39,7 @@ impl PyValue for PyNone {
 }
 
 impl PyNone {
-    pub fn __str__(&self, interpreter: Arc<Interpreter>) -> PyStr {
+    pub fn __str__(&self, interpreter: Arc<Interpreter>, _values: Vec<Box<dyn PyValue>>) -> PyStr {
         PyStr::new(interpreter, "None".to_string())
     }
 }

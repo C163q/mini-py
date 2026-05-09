@@ -8,6 +8,8 @@ use crate::{
     var::PyValue,
 };
 
+pub const ANY_TYPE_NAME: &str = "$builtin_any";
+
 pub(super) fn init_type<I>(interpreter: Arc<Interpreter>, type_name: &str, mapper: I)
 where
     I: IntoIterator<Item = (&'static str, PyFunction)>,
@@ -30,8 +32,8 @@ pub fn check_args(expected: &[&str], got: &[Box<dyn PyValue>]) -> Result<(), Int
         )));
     }
 
-    for (i, (expected_type, arg)) in expected.iter().zip(got.iter()).enumerate() {
-        if arg.get_type().get_name() != *expected_type {
+    for (i, (&expected_type, arg)) in expected.iter().zip(got.iter()).enumerate() {
+        if expected_type != ANY_TYPE_NAME && arg.get_type().get_name() != expected_type {
             return Err(InterpreterError::new(format!(
                 "Argument {}: expected type '{}', got '{}'",
                 i + 1,
@@ -67,15 +69,16 @@ macro_rules! def_func_pair {
     ($name:tt, $type:ty, $interpreter:ident, $expected:expr) => {
         (
             stringify!($name),
-            $crate::func::PyFunction::new_builtin(|$interpreter, value| {
-                $crate::types::init::check_args($expected, &value)?;
-                match value[0].as_any().downcast_ref::<$type>() {
+            $crate::func::PyFunction::new_builtin(|$interpreter, mut values| {
+                $crate::types::init::check_args($expected, &values)?;
+                let other_values = values.split_off(1);
+                match values[0].as_any().downcast_ref::<$type>() {
                     None => {
                         unreachable!(
                             "This should never happen, type checking should have caught this"
                         )
                     }
-                    Some(s) => Ok(Box::new(s.$name($interpreter))),
+                    Some(s) => Ok(Box::new(s.$name($interpreter, other_values))),
                 }
             }),
         )
