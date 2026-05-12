@@ -6,36 +6,139 @@ use crate::{Interpreter, types::int::PyInt};
 
 #[derive(Debug, Clone)]
 pub struct Expr {
-    pub value: AddExpr,
+    pub value: EqExpr,
 }
 
-impl Expr {
-    pub fn new_add(value: AddExpr) -> Self {
-        Self { value }
-    }
+macro_rules! impl_expr {
+    ($name:ident, $val_ty:ty, $($param_name:ident, $param_ty:ty),+) => {
+        impl Expr {
+            pub fn $name(value: $val_ty) -> Self {
+                Self { value }
+            }
 
-    pub fn new_mul(value: MulExpr) -> Self {
-        Self {
-            value: AddExpr::new_mul(value),
+            $(
+                pub fn $param_name(value: $param_ty) -> Self {
+                    Self {
+                        value: <$val_ty>::$param_name(value),
+                    }
+                }
+            )+
+        }
+    };
+}
+
+impl_expr!(
+    new_eq,
+    EqExpr,
+    new_rel,
+    RelExpr,
+    new_add,
+    AddExpr,
+    new_mul,
+    MulExpr,
+    new_unary,
+    UnaryExpr,
+    new_primary,
+    PrimaryExpr,
+    new_number,
+    Number
+);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EqOp {
+    Eq,
+    NotEq,
+}
+
+#[derive(Debug, Clone)]
+pub enum EqExpr {
+    Expr {
+        left: Box<RelExpr>,
+        op: EqOp,
+        right: Box<EqExpr>,
+    },
+    Rel(RelExpr),
+}
+
+impl EqExpr {
+    pub fn new_eq(left: RelExpr, op: EqOp, right: EqExpr) -> Self {
+        Self::Expr {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
         }
     }
 
-    pub fn new_unary(value: UnaryExpr) -> Self {
-        Self {
-            value: AddExpr::new_unary(value),
-        }
+    pub fn new_rel(expr: RelExpr) -> Self {
+        Self::Rel(expr)
     }
 
-    pub fn new_primary(value: PrimaryExpr) -> Self {
-        Self {
-            value: AddExpr::new_primary(value),
-        }
+    pub fn new_add(expr: AddExpr) -> Self {
+        Self::Rel(RelExpr::new_add(expr))
+    }
+
+    pub fn new_mul(expr: MulExpr) -> Self {
+        Self::Rel(RelExpr::new_mul(expr))
+    }
+
+    pub fn new_unary(expr: UnaryExpr) -> Self {
+        Self::Rel(RelExpr::new_unary(expr))
+    }
+
+    pub fn new_primary(expr: PrimaryExpr) -> Self {
+        Self::Rel(RelExpr::new_primary(expr))
     }
 
     pub fn new_number(num: Number) -> Self {
-        Self {
-            value: AddExpr::new_number(num),
+        Self::Rel(RelExpr::new_number(num))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelOp {
+    Lt,
+    Gt,
+    Le,
+    Ge,
+}
+
+#[derive(Debug, Clone)]
+pub enum RelExpr {
+    Expr {
+        left: Box<AddExpr>,
+        op: RelOp,
+        right: Box<RelExpr>,
+    },
+    Add(AddExpr),
+}
+
+impl RelExpr {
+    pub fn new_rel(left: AddExpr, op: RelOp, right: RelExpr) -> Self {
+        Self::Expr {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
         }
+    }
+
+    pub fn new_add(expr: AddExpr) -> Self {
+        Self::Add(expr)
+    }
+
+    pub fn new_mul(expr: MulExpr) -> Self {
+        Self::Add(AddExpr::new_mul(expr))
+    }
+
+    pub fn new_unary(expr: UnaryExpr) -> Self {
+        Self::Add(AddExpr::new_unary(expr))
+    }
+
+    pub fn new_primary(expr: PrimaryExpr) -> Self {
+        Self::Add(AddExpr::new_primary(expr))
+    }
+
+    pub fn new_number(num: Number) -> Self {
+        Self::Add(AddExpr::new_number(num))
     }
 }
 

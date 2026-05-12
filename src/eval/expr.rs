@@ -3,7 +3,10 @@ use std::sync::Arc;
 use crate::{
     Interpreter,
     error::InterpreterError,
-    lexer::ast::{AddExpr, AddOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, UnaryExpr, UnaryOp},
+    lexer::ast::{
+        AddExpr, AddOp, EqExpr, EqOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, RelExpr, RelOp,
+        UnaryExpr, UnaryOp,
+    },
     var::PyValue,
 };
 
@@ -135,9 +138,91 @@ pub fn eval_add_expr(
     }
 }
 
+pub fn eval_rel_expr(
+    interpreter: Arc<Interpreter>,
+    expr: RelExpr,
+) -> Result<Box<dyn PyValue>, InterpreterError> {
+    match expr {
+        RelExpr::Add(expr) => eval_add_expr(interpreter, expr),
+        RelExpr::Expr { left, op, right } => match op {
+            RelOp::Lt => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_add_expr,
+                    *right,
+                    eval_rel_expr,
+                    "__lt__"
+                )
+            }
+            RelOp::Gt => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_add_expr,
+                    *right,
+                    eval_rel_expr,
+                    "__gt__"
+                )
+            }
+            RelOp::Le => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_add_expr,
+                    *right,
+                    eval_rel_expr,
+                    "__le__"
+                )
+            }
+            RelOp::Ge => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_add_expr,
+                    *right,
+                    eval_rel_expr,
+                    "__ge__"
+                )
+            }
+        },
+    }
+}
+
+pub fn eval_eq_expr(
+    interpreter: Arc<Interpreter>,
+    expr: EqExpr,
+) -> Result<Box<dyn PyValue>, InterpreterError> {
+    match expr {
+        EqExpr::Rel(expr) => eval_rel_expr(interpreter, expr),
+        EqExpr::Expr { left, op, right } => match op {
+            EqOp::Eq => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_rel_expr,
+                    *right,
+                    eval_eq_expr,
+                    "__eq__"
+                )
+            }
+            EqOp::NotEq => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_rel_expr,
+                    *right,
+                    eval_eq_expr,
+                    "__ne__"
+                )
+            }
+        },
+    }
+}
+
 pub fn eval_expr(
     interpreter: Arc<Interpreter>,
     expr: Expr,
 ) -> Result<Box<dyn PyValue>, InterpreterError> {
-    eval_add_expr(interpreter, expr.value)
+    eval_eq_expr(interpreter, expr.value)
 }

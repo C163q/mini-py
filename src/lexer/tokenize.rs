@@ -458,12 +458,10 @@ pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
                 idx += 1;
                 continue;
             }
-            '-' => {
-                if idx + 1 < chars.len() && chars[idx + 1] == '>' {
-                    tokens.push(Token::new(TokenKind::new_separator_from_str("->").unwrap()));
-                    idx += 2;
-                    continue;
-                }
+            '-' if idx + 1 < chars.len() && chars[idx + 1] == '>' => {
+                tokens.push(Token::new(TokenKind::new_separator_from_str("->").unwrap()));
+                idx += 2;
+                continue;
             }
             _ => {}
         }

@@ -7,7 +7,10 @@ use crate::{
     error::InterpreterError,
     eval,
     lexer::{
-        ast::{AddExpr, AddOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, UnaryExpr, UnaryOp},
+        ast::{
+            AddExpr, AddOp, EqExpr, EqOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, RelExpr,
+            RelOp, UnaryExpr, UnaryOp,
+        },
         tokenize::{Operator, Separator, Token, TokenKind},
     },
     types::tstr::PyStr,
@@ -218,6 +221,102 @@ fn eval_add_expr(
     None
 }
 
+fn eval_rel_op(
+    _interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<RelOp>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let TokenKind::Operator(op) = &tokens[idx].value {
+        match op {
+            Operator::Less => Some(EvalResult::new(idx + 1, RelOp::Lt)),
+            Operator::Greater => Some(EvalResult::new(idx + 1, RelOp::Gt)),
+            Operator::LessEqual => Some(EvalResult::new(idx + 1, RelOp::Le)),
+            Operator::GreaterEqual => Some(EvalResult::new(idx + 1, RelOp::Ge)),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn eval_rel_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<RelExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if idx + 2 < tokens.len()
+        && let Some(left) = eval_add_expr(interpreter.clone(), tokens, idx)
+        && let Some(op) = eval_rel_op(interpreter.clone(), tokens, left.idx)
+        && let Some(right) = eval_rel_expr(interpreter.clone(), tokens, op.idx)
+    {
+        return Some(EvalResult::new(
+            right.idx,
+            RelExpr::new_rel(left.value, op.value, right.value),
+        ));
+    }
+
+    if let Some(add) = eval_add_expr(interpreter.clone(), tokens, idx) {
+        return Some(EvalResult::new(add.idx, RelExpr::new_add(add.value)));
+    }
+
+    None
+}
+
+fn eval_eq_op(
+    _interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<EqOp>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let TokenKind::Operator(op) = &tokens[idx].value {
+        match op {
+            Operator::Equal => Some(EvalResult::new(idx + 1, EqOp::Eq)),
+            Operator::NotEqual => Some(EvalResult::new(idx + 1, EqOp::NotEq)),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn eval_eq_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<EqExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if idx + 2 < tokens.len()
+        && let Some(left) = eval_rel_expr(interpreter.clone(), tokens, idx)
+        && let Some(op) = eval_eq_op(interpreter.clone(), tokens, left.idx)
+        && let Some(right) = eval_eq_expr(interpreter.clone(), tokens, op.idx)
+    {
+        return Some(EvalResult::new(
+            right.idx,
+            EqExpr::new_eq(left.value, op.value, right.value),
+        ));
+    }
+
+    if let Some(rel) = eval_rel_expr(interpreter.clone(), tokens, idx) {
+        return Some(EvalResult::new(rel.idx, EqExpr::new_rel(rel.value)));
+    }
+
+    None
+}
+
 fn eval_expr(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
@@ -227,8 +326,8 @@ fn eval_expr(
         return None;
     }
 
-    if let Some(add) = eval_add_expr(interpreter, tokens, idx) {
-        return Some(EvalResult::new(add.idx, Expr::new_add(add.value)));
+    if let Some(eq) = eval_eq_expr(interpreter, tokens, idx) {
+        return Some(EvalResult::new(eq.idx, Expr::new_eq(eq.value)));
     }
 
     None
