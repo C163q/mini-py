@@ -8,10 +8,10 @@ use crate::{
     eval,
     lexer::{
         ast::{
-            AddExpr, AddOp, EqExpr, EqOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, RelExpr,
-            RelOp, UnaryExpr, UnaryOp,
+            AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr, MulOp,
+            Number, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
         },
-        tokenize::{Operator, Separator, Token, TokenKind},
+        tokenize::{Keyword, Operator, Separator, Token, TokenKind},
     },
     types::tstr::PyStr,
 };
@@ -89,6 +89,7 @@ fn eval_unary_op(
         match op {
             Operator::Add => Some(EvalResult::new(idx + 1, UnaryOp::Pos)),
             Operator::Sub => Some(EvalResult::new(idx + 1, UnaryOp::Neg)),
+            Operator::Not => Some(EvalResult::new(idx + 1, UnaryOp::BitNot)),
             _ => None,
         }
     } else {
@@ -317,6 +318,83 @@ fn eval_eq_expr(
     None
 }
 
+fn eval_not_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<LNotExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if idx + 1 < tokens.len()
+        && tokens[idx].value == TokenKind::Keyword(Keyword::Not)
+        && let Some(expr) = eval_not_expr(interpreter.clone(), tokens, idx + 1)
+    {
+        return Some(EvalResult::new(expr.idx, LNotExpr::new_not(expr.value)));
+    }
+
+    if let Some(eq) = eval_eq_expr(interpreter, tokens, idx) {
+        return Some(EvalResult::new(eq.idx, LNotExpr::new_eq(eq.value)));
+    }
+
+    None
+}
+
+fn eval_and_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<LAndExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let Some(left) = eval_not_expr(interpreter.clone(), tokens, idx)
+        && left.idx + 1 < tokens.len()
+        && tokens[left.idx].value == TokenKind::Keyword(Keyword::And)
+        && let Some(right) = eval_and_expr(interpreter.clone(), tokens, left.idx + 1)
+    {
+        return Some(EvalResult::new(
+            right.idx,
+            LAndExpr::new_and(left.value, right.value),
+        ));
+    }
+
+    if let Some(not) = eval_not_expr(interpreter.clone(), tokens, idx) {
+        return Some(EvalResult::new(not.idx, LAndExpr::new_not(not.value)));
+    }
+
+    None
+}
+
+fn eval_or_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<EvalResult<LOrExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let Some(left) = eval_and_expr(interpreter.clone(), tokens, idx)
+        && left.idx + 1 < tokens.len()
+        && tokens[left.idx].value == TokenKind::Keyword(Keyword::Or)
+        && let Some(right) = eval_or_expr(interpreter.clone(), tokens, left.idx + 1)
+    {
+        return Some(EvalResult::new(
+            right.idx,
+            LOrExpr::new_or(left.value, right.value),
+        ));
+    }
+
+    if let Some(and) = eval_and_expr(interpreter.clone(), tokens, idx) {
+        return Some(EvalResult::new(and.idx, LOrExpr::new_and(and.value)));
+    }
+
+    None
+}
+
 fn eval_expr(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
@@ -326,8 +404,8 @@ fn eval_expr(
         return None;
     }
 
-    if let Some(eq) = eval_eq_expr(interpreter, tokens, idx) {
-        return Some(EvalResult::new(eq.idx, Expr::new_eq(eq.value)));
+    if let Some(lor) = eval_or_expr(interpreter, tokens, idx) {
+        return Some(EvalResult::new(lor.idx, Expr::new_or(lor.value)));
     }
 
     None

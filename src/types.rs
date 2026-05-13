@@ -8,6 +8,7 @@ use crate::func::PyFunction;
 pub mod init;
 pub mod int;
 pub mod none;
+pub mod tbool;
 pub mod tstr;
 
 #[derive(Debug)]

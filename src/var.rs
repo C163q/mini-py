@@ -1,8 +1,10 @@
 use std::{any::Any, fmt::Debug, sync::Arc};
 
+use dyn_clone::DynClone;
+
 use crate::{func::PyFunction, types::PyType};
 
-pub trait PyValue: Any {
+pub trait PyValue: Any + DynClone {
     fn get_type(&self) -> Arc<PyType>;
 
     fn get_function(&self, name: &str) -> Option<Arc<PyFunction>> {
@@ -10,7 +12,9 @@ pub trait PyValue: Any {
     }
 }
 
-impl<T: PyValue> PyValue for Box<T> {
+dyn_clone::clone_trait_object!(PyValue);
+
+impl<T: PyValue + Clone> PyValue for Box<T> {
     fn get_type(&self) -> Arc<PyType> {
         (**self).get_type()
     }

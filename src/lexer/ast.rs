@@ -6,7 +6,7 @@ use crate::{Interpreter, types::int::PyInt};
 
 #[derive(Debug, Clone)]
 pub struct Expr {
-    pub value: EqExpr,
+    pub value: LOrExpr,
 }
 
 macro_rules! impl_expr {
@@ -28,6 +28,12 @@ macro_rules! impl_expr {
 }
 
 impl_expr!(
+    new_or,
+    LOrExpr,
+    new_and,
+    LAndExpr,
+    new_not,
+    LNotExpr,
     new_eq,
     EqExpr,
     new_rel,
@@ -43,6 +49,138 @@ impl_expr!(
     new_number,
     Number
 );
+
+#[derive(Debug, Clone)]
+pub enum LOrExpr {
+    Or(Box<LAndExpr>, Box<LOrExpr>),
+    And(LAndExpr),
+}
+
+impl LOrExpr {
+    pub fn new_or(left: LAndExpr, right: LOrExpr) -> Self {
+        Self::Or(Box::new(left), Box::new(right))
+    }
+
+    pub fn new_and(expr: LAndExpr) -> Self {
+        Self::And(expr)
+    }
+
+    pub fn new_not(expr: LNotExpr) -> Self {
+        Self::And(LAndExpr::new_not(expr))
+    }
+
+    pub fn new_eq(expr: EqExpr) -> Self {
+        Self::And(LAndExpr::new_eq(expr))
+    }
+
+    pub fn new_rel(expr: RelExpr) -> Self {
+        Self::And(LAndExpr::new_rel(expr))
+    }
+
+    pub fn new_add(expr: AddExpr) -> Self {
+        Self::And(LAndExpr::new_add(expr))
+    }
+
+    pub fn new_mul(expr: MulExpr) -> Self {
+        Self::And(LAndExpr::new_mul(expr))
+    }
+
+    pub fn new_unary(expr: UnaryExpr) -> Self {
+        Self::And(LAndExpr::new_unary(expr))
+    }
+
+    pub fn new_primary(expr: PrimaryExpr) -> Self {
+        Self::And(LAndExpr::new_primary(expr))
+    }
+
+    pub fn new_number(num: Number) -> Self {
+        Self::And(LAndExpr::new_number(num))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum LAndExpr {
+    And(Box<LNotExpr>, Box<LAndExpr>),
+    Not(LNotExpr),
+}
+
+impl LAndExpr {
+    pub fn new_and(left: LNotExpr, right: LAndExpr) -> Self {
+        Self::And(Box::new(left), Box::new(right))
+    }
+
+    pub fn new_not(expr: LNotExpr) -> Self {
+        Self::Not(expr)
+    }
+
+    pub fn new_eq(expr: EqExpr) -> Self {
+        Self::Not(LNotExpr::new_eq(expr))
+    }
+
+    pub fn new_rel(expr: RelExpr) -> Self {
+        Self::Not(LNotExpr::new_rel(expr))
+    }
+
+    pub fn new_add(expr: AddExpr) -> Self {
+        Self::Not(LNotExpr::new_add(expr))
+    }
+
+    pub fn new_mul(expr: MulExpr) -> Self {
+        Self::Not(LNotExpr::new_mul(expr))
+    }
+
+    pub fn new_unary(expr: UnaryExpr) -> Self {
+        Self::Not(LNotExpr::new_unary(expr))
+    }
+
+    pub fn new_primary(expr: PrimaryExpr) -> Self {
+        Self::Not(LNotExpr::new_primary(expr))
+    }
+
+    pub fn new_number(num: Number) -> Self {
+        Self::Not(LNotExpr::new_number(num))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum LNotExpr {
+    Not(Box<LNotExpr>),
+    Eq(EqExpr),
+}
+
+impl LNotExpr {
+    pub fn new_not(expr: LNotExpr) -> Self {
+        Self::Not(Box::new(expr))
+    }
+
+    pub fn new_eq(expr: EqExpr) -> Self {
+        Self::Eq(expr)
+    }
+
+    pub fn new_rel(expr: RelExpr) -> Self {
+        Self::Eq(EqExpr::new_rel(expr))
+    }
+
+    pub fn new_add(expr: AddExpr) -> Self {
+        Self::Eq(EqExpr::new_add(expr))
+    }
+
+    pub fn new_mul(expr: MulExpr) -> Self {
+        Self::Eq(EqExpr::new_mul(expr))
+    }
+
+    pub fn new_unary(expr: UnaryExpr) -> Self {
+        Self::Eq(EqExpr::new_unary(expr))
+    }
+
+    pub fn new_primary(expr: PrimaryExpr) -> Self {
+        Self::Eq(EqExpr::new_primary(expr))
+    }
+
+    pub fn new_number(num: Number) -> Self {
+        Self::Eq(EqExpr::new_number(num))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EqOp {
@@ -228,6 +366,7 @@ impl MulExpr {
 pub enum UnaryOp {
     Pos,
     Neg,
+    BitNot,
     // TODO
 }
 

@@ -4,9 +4,10 @@ use crate::{
     Interpreter,
     error::InterpreterError,
     lexer::ast::{
-        AddExpr, AddOp, EqExpr, EqOp, Expr, MulExpr, MulOp, Number, PrimaryExpr, RelExpr, RelOp,
-        UnaryExpr, UnaryOp,
+        AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr, MulOp, Number,
+        PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
     },
+    types::tbool::PyBool,
     var::PyValue,
 };
 
@@ -50,6 +51,9 @@ pub fn eval_unary_expr(
             }
             UnaryOp::Neg => {
                 eval_unary!(interpreter, *expr, "__neg__")
+            }
+            UnaryOp::BitNot => {
+                eval_unary!(interpreter, *expr, "__invert__")
             }
         },
     }
@@ -220,9 +224,75 @@ pub fn eval_eq_expr(
     }
 }
 
+fn get_bool_value(
+    interpreter: Arc<Interpreter>,
+    value: Box<dyn PyValue>,
+) -> Result<bool, InterpreterError> {
+    let bool_func = value
+        .get_function("__bool__")
+        .ok_or_else(|| InterpreterError::new("Type does not support __bool__".to_string()))?;
+    let bool_value = bool_func.call(interpreter.clone(), vec![value])?;
+    let bool_value = bool_value
+        .as_any()
+        .downcast_ref::<PyBool>()
+        .ok_or_else(|| InterpreterError::new("__bool__ did not return a bool".to_string()))?
+        .get_value();
+    Ok(bool_value)
+}
+
+pub fn eval_not_expr(
+    interpreter: Arc<Interpreter>,
+    expr: LNotExpr,
+) -> Result<Box<dyn PyValue>, InterpreterError> {
+    match expr {
+        LNotExpr::Eq(expr) => eval_eq_expr(interpreter, expr),
+        LNotExpr::Not(expr) => {
+            let expr_value = eval_not_expr(interpreter.clone(), *expr)?;
+            let bool_value = get_bool_value(interpreter.clone(), expr_value)?;
+            Ok(Box::new(PyBool::new(interpreter, !bool_value)))
+        }
+    }
+}
+
+pub fn eval_and_expr(
+    interpreter: Arc<Interpreter>,
+    expr: LAndExpr,
+) -> Result<Box<dyn PyValue>, InterpreterError> {
+    match expr {
+        LAndExpr::Not(expr) => eval_not_expr(interpreter, expr),
+        LAndExpr::And(left, right) => {
+            let lhs_value = eval_not_expr(interpreter.clone(), *left)?;
+            let lhs_bool = get_bool_value(interpreter.clone(), lhs_value.clone())?;
+            if lhs_bool {
+                Ok(eval_and_expr(interpreter.clone(), *right)?)
+            } else {
+                Ok(lhs_value)
+            }
+        }
+    }
+}
+
+pub fn eval_or_expr(
+    interpreter: Arc<Interpreter>,
+    expr: LOrExpr,
+) -> Result<Box<dyn PyValue>, InterpreterError> {
+    match expr {
+        LOrExpr::And(expr) => eval_and_expr(interpreter, expr),
+        LOrExpr::Or(left, right) => {
+            let lhs_value = eval_and_expr(interpreter.clone(), *left)?;
+            let lhs_bool = get_bool_value(interpreter.clone(), lhs_value.clone())?;
+            if lhs_bool {
+                Ok(lhs_value)
+            } else {
+                Ok(eval_or_expr(interpreter.clone(), *right)?)
+            }
+        }
+    }
+}
+
 pub fn eval_expr(
     interpreter: Arc<Interpreter>,
     expr: Expr,
 ) -> Result<Box<dyn PyValue>, InterpreterError> {
-    eval_eq_expr(interpreter, expr.value)
+    eval_or_expr(interpreter, expr.value)
 }

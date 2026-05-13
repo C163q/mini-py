@@ -4,7 +4,7 @@ use crate::{
     Interpreter,
     error::InterpreterError,
     func::PyFunction,
-    types::{PyType, int, none, tstr},
+    types::{PyType, int, none, tbool, tstr},
     var::PyValue,
 };
 
@@ -50,6 +50,7 @@ pub fn register_types(interpreter: Arc<Interpreter>) {
     none::init_type(interpreter.clone());
     int::init_type(interpreter.clone());
     tstr::init_type(interpreter.clone());
+    tbool::init_type(interpreter.clone());
 }
 
 #[macro_export]

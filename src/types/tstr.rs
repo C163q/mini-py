@@ -18,7 +18,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     );
 }
 
-/// None Value
+/// String
 #[derive(Debug, Clone)]
 pub struct PyStr {
     ty: Arc<PyType>,
