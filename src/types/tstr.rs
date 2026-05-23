@@ -47,7 +47,7 @@ impl Display for PyStr {
 }
 
 impl PyStr {
-    pub fn __str__(&self, _: Arc<Interpreter>, _values: Vec<Box<dyn PyValue>>) -> PyStr {
+    pub fn __str__(&self, _: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyStr {
         self.clone()
     }
 }

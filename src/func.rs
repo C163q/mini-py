@@ -3,7 +3,7 @@ use std::{fmt::Debug, sync::Arc};
 use crate::{Interpreter, error::InterpreterError, var::PyValue};
 
 pub type BuiltinPyFunction = Box<
-    dyn Fn(Arc<Interpreter>, Vec<Box<dyn PyValue>>) -> Result<Box<dyn PyValue>, InterpreterError>
+    dyn Fn(Arc<Interpreter>, Vec<Arc<dyn PyValue>>) -> Result<Arc<dyn PyValue>, InterpreterError>
         + Send
         + Sync
         + 'static,
@@ -28,8 +28,8 @@ impl PyFunction {
     where
         F: Fn(
                 Arc<Interpreter>,
-                Vec<Box<dyn PyValue>>,
-            ) -> Result<Box<dyn PyValue>, InterpreterError>
+                Vec<Arc<dyn PyValue>>,
+            ) -> Result<Arc<dyn PyValue>, InterpreterError>
             + Send
             + Sync
             + 'static,
@@ -40,8 +40,8 @@ impl PyFunction {
     pub fn call(
         &self,
         interpreter: Arc<Interpreter>,
-        args: Vec<Box<dyn PyValue>>,
-    ) -> Result<Box<dyn PyValue>, InterpreterError> {
+        args: Vec<Arc<dyn PyValue>>,
+    ) -> Result<Arc<dyn PyValue>, InterpreterError> {
         match self {
             PyFunction::Builtin(func) => func(interpreter, args),
             // PyFunction::UserDefined(func) => func.call(interpreter, args),

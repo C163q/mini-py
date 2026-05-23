@@ -23,7 +23,7 @@ where
     }
 }
 
-pub fn check_args(expected: &[&str], got: &[Box<dyn PyValue>]) -> Result<(), InterpreterError> {
+pub fn check_args(expected: &[&str], got: &[Arc<dyn PyValue>]) -> Result<(), InterpreterError> {
     if expected.len() != got.len() {
         return Err(InterpreterError::new(format!(
             "Expected {} arguments, got {}",
@@ -79,7 +79,7 @@ macro_rules! def_func_pair {
                             "This should never happen, type checking should have caught this"
                         )
                     }
-                    Some(s) => Ok(Box::new(s.$name($interpreter, other_values))),
+                    Some(s) => Ok(Arc::new(s.$name($interpreter, other_values))),
                 }
             }),
         )

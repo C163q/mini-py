@@ -5,10 +5,23 @@ use crate::{
     error::InterpreterError,
     lexer::{self, tokenize::Token},
     types::tstr::PyStr,
-    var::PyValue,
 };
 
 pub mod expr;
+pub mod output;
+
+#[derive(Debug, Clone)]
+pub struct ParseResult<T> {
+    /// Next index to parse. It should be the index of the first token that is not parsed yet.
+    pub idx: usize,
+    pub value: T,
+}
+
+impl<T> ParseResult<T> {
+    pub fn new(idx: usize, value: T) -> Self {
+        Self { idx, value }
+    }
+}
 
 pub fn eval_line(
     interpreter: Arc<Interpreter>,
@@ -18,35 +31,6 @@ pub fn eval_line(
     eval_line_from_token(interpreter, &tokens)
 }
 
-pub fn output_value(
-    interpreter: Arc<Interpreter>,
-    value: Box<dyn PyValue>,
-) -> Result<PyStr, InterpreterError> {
-    if let Some(repr_func) = value.get_function("__repr__") {
-        let repr_value = repr_func.call(interpreter.clone(), vec![value])?;
-        if let Some(repr_str) = repr_value.as_any().downcast_ref::<PyStr>() {
-            Ok(repr_str.clone())
-        } else {
-            Err(InterpreterError::new(
-                "__repr__ did not return a string".to_string(),
-            ))
-        }
-    } else if let Some(str_func) = value.get_function("__str__") {
-        let str_value = str_func.call(interpreter.clone(), vec![value])?;
-        if let Some(str_str) = str_value.as_any().downcast_ref::<PyStr>() {
-            Ok(str_str.clone())
-        } else {
-            Err(InterpreterError::new(
-                "__str__ did not return a string".to_string(),
-            ))
-        }
-    } else {
-        Err(InterpreterError::new(
-            "Type does not support __repr__ or __str__".to_string(),
-        ))
-    }
-}
-
 fn eval_line_from_token(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
@@ -54,5 +38,27 @@ fn eval_line_from_token(
     if tokens.is_empty() {
         return Ok(None);
     }
-    lexer::parser::eval_line(interpreter, tokens)
+    parse_and_eval_line(interpreter, tokens)
+}
+
+/// Ok(PyStr) if the line is valid, Err(InterpreterError) otherwise.
+///
+/// Note that PyStr is only used for REPL. Any effect of the line should be applied to the
+/// interpreter.
+fn parse_and_eval_line(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+) -> Result<Option<PyStr>, InterpreterError> {
+    let idx = 0;
+
+    // <expr>
+    if let Some(expr) = expr::parse_expr(interpreter.clone(), tokens, idx)
+        && expr.idx == tokens.len()
+    {
+        let value = expr::eval_expr(interpreter.clone(), expr.value)?;
+        let output = output::output_value(interpreter.clone(), value)?;
+        return Ok(Some(output));
+    }
+
+    Err(InterpreterError::new("Invalid syntax".to_string()))
 }

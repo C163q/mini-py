@@ -57,11 +57,11 @@ impl Display for PyBool {
 }
 
 impl PyBool {
-    pub fn __str__(&self, interpreter: Arc<Interpreter>, _values: Vec<Box<dyn PyValue>>) -> PyStr {
+    pub fn __str__(&self, interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyStr {
         PyStr::new(interpreter, self.to_string())
     }
 
-    pub fn __bool__(&self, _: Arc<Interpreter>, _values: Vec<Box<dyn PyValue>>) -> PyBool {
+    pub fn __bool__(&self, _: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyBool {
         self.clone()
     }
 }

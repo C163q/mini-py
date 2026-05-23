@@ -5,7 +5,6 @@ use crate::{Interpreter, error::InterpreterError, lexer::tokenize::Token};
 pub mod ast;
 pub mod indent;
 pub mod line;
-pub mod parser;
 pub mod tokenize;
 
 pub fn lex_line(

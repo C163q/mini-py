@@ -77,7 +77,7 @@ impl Display for PyInt {
 
 macro_rules! def_binary_op {
     ($func_name:ident, $op:tt, $pyop:literal, $ret:tt) => {
-        pub fn $func_name(&self, interpreter: Arc<Interpreter>, values: Vec<Box<dyn PyValue>>) -> $ret {
+        pub fn $func_name(&self, interpreter: Arc<Interpreter>, values: Vec<Arc<dyn PyValue>>) -> $ret {
             if let Some(other_int) = values[0].as_any().downcast_ref::<PyInt>() {
                 $ret::new(interpreter, self.value.clone() $op other_int.value.clone())
             } else {
@@ -89,22 +89,22 @@ macro_rules! def_binary_op {
 }
 
 impl PyInt {
-    pub fn __str__(&self, interpreter: Arc<Interpreter>, _values: Vec<Box<dyn PyValue>>) -> PyStr {
+    pub fn __str__(&self, interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyStr {
         PyStr::new(interpreter, self.value.to_string())
     }
 
-    pub fn __pos__(&self, interpreter: Arc<Interpreter>, _values: Vec<Box<dyn PyValue>>) -> PyInt {
+    pub fn __pos__(&self, interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyInt {
         PyInt::new(interpreter, self.value.clone())
     }
 
-    pub fn __neg__(&self, interpreter: Arc<Interpreter>, _values: Vec<Box<dyn PyValue>>) -> PyInt {
+    pub fn __neg__(&self, interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyInt {
         PyInt::new(interpreter, -self.value.clone())
     }
 
     pub fn __invert__(
         &self,
         interpreter: Arc<Interpreter>,
-        _values: Vec<Box<dyn PyValue>>,
+        _values: Vec<Arc<dyn PyValue>>,
     ) -> PyInt {
         PyInt::new(interpreter, !self.value.clone())
     }
@@ -112,7 +112,7 @@ impl PyInt {
     pub fn __bool__(
         &self,
         interpreter: Arc<Interpreter>,
-        _values: Vec<Box<dyn PyValue>>,
+        _values: Vec<Arc<dyn PyValue>>,
     ) -> PyBool {
         PyBool::new(interpreter, self.value != BigInt::from(0))
     }
