@@ -107,6 +107,16 @@ pub fn eval_mul_expr(
                     "__mod__"
                 )
             }
+            MulOp::TrueDiv => {
+                eval_binary!(
+                    interpreter,
+                    *left,
+                    eval_unary_expr,
+                    *right,
+                    eval_mul_expr,
+                    "__truediv__"
+                )
+            }
         },
     }
 }

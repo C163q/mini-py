@@ -2,10 +2,14 @@ use std::{fmt::Display, sync::Arc};
 
 use num_bigint::BigInt;
 
+use num_rational::BigRational;
+use num_traits::{Zero, cast::ToPrimitive};
+
 use crate::{
     Interpreter, def_func_pair, get_type,
     types::{
         PyType,
+        float::PyFloat,
         init::{self, ANY_TYPE_NAME},
         tbool::PyBool,
         tstr::PyStr,
@@ -23,10 +27,12 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
         TYPE_NAME,
         [
             def_func_pair!(__str__, PyInt, interpreter, &[TYPE_NAME]),
+            def_func_pair!(__bool__, PyInt, interpreter, &[TYPE_NAME]),
+            def_func_pair!(__int__, PyInt, interpreter, &[TYPE_NAME]),
+            def_func_pair!(__float__, PyInt, interpreter, &[TYPE_NAME]),
             def_func_pair!(__pos__, PyInt, interpreter, &[TYPE_NAME]),
             def_func_pair!(__neg__, PyInt, interpreter, &[TYPE_NAME]),
             def_func_pair!(__invert__, PyInt, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__bool__, PyInt, interpreter, &[TYPE_NAME]),
             def_func_pair!(__add__, PyInt, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
             def_func_pair!(__sub__, PyInt, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
             def_func_pair!(__mul__, PyInt, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
@@ -36,6 +42,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
                 interpreter,
                 &[TYPE_NAME, ANY_TYPE_NAME]
             ),
+            def_func_pair!(__truediv__, PyInt, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
             def_func_pair!(__mod__, PyInt, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
             def_func_pair!(__lt__, PyInt, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
             def_func_pair!(__le__, PyInt, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
@@ -93,6 +100,28 @@ impl PyInt {
         PyStr::new(interpreter, self.value.to_string())
     }
 
+    pub fn __bool__(
+        &self,
+        interpreter: Arc<Interpreter>,
+        _values: Vec<Arc<dyn PyValue>>,
+    ) -> PyBool {
+        PyBool::new(interpreter, self.value != BigInt::from(0))
+    }
+
+    pub fn __int__(&self, _interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyInt {
+        self.clone()
+    }
+
+    pub fn __float__(
+        &self,
+        interpreter: Arc<Interpreter>,
+        _values: Vec<Arc<dyn PyValue>>,
+    ) -> PyFloat {
+        // It never fails.
+        let float_value = self.value.to_f64().unwrap();
+        PyFloat::new(interpreter, float_value)
+    }
+
     pub fn __pos__(&self, interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyInt {
         PyInt::new(interpreter, self.value.clone())
     }
@@ -109,12 +138,30 @@ impl PyInt {
         PyInt::new(interpreter, !self.value.clone())
     }
 
-    pub fn __bool__(
+    pub fn __truediv__(
         &self,
         interpreter: Arc<Interpreter>,
-        _values: Vec<Arc<dyn PyValue>>,
-    ) -> PyBool {
-        PyBool::new(interpreter, self.value != BigInt::from(0))
+        values: Vec<Arc<dyn PyValue>>,
+    ) -> PyFloat {
+        if let Some(other_int) = values[0].as_any().downcast_ref::<PyInt>() {
+            let other_value = other_int.value.clone();
+            if other_value.is_zero() {
+                // TODO: Implement error handling
+                panic!("division by zero");
+            }
+            BigRational::new(self.value.clone(), other_int.value.clone())
+                .to_f64()
+                .map(|f| PyFloat::new(interpreter, f))
+                // Never fails because None is only returned when f64 is NaN.
+                // This case has been handled above.
+                .unwrap()
+        } else {
+            // TODO: Implement error handling
+            panic!(
+                "Unsupported operand type(s) for /: 'int' and '{}'",
+                values[0].get_type().get_name()
+            );
+        }
     }
 
     def_binary_op!(__add__, +, "+", PyInt);

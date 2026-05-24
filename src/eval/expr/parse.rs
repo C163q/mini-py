@@ -125,7 +125,7 @@ fn parse_mul_op(
             Operator::Mul => Some(ParseResult::new(idx + 1, MulOp::Mul)),
             Operator::FloorDiv => Some(ParseResult::new(idx + 1, MulOp::FloorDiv)),
             Operator::Mod => Some(ParseResult::new(idx + 1, MulOp::Mod)),
-            Operator::TrueDiv => unimplemented!(),
+            Operator::TrueDiv => Some(ParseResult::new(idx + 1, MulOp::TrueDiv)),
             _ => None,
         }
     } else {

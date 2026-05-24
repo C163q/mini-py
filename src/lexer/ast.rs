@@ -325,7 +325,7 @@ impl AddExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MulOp {
     Mul,
-    // TODO: TrueDiv,
+    TrueDiv,
     FloorDiv,
     Mod,
 }
