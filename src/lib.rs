@@ -8,8 +8,8 @@ use crate::{error::InterpreterError, lexer::line::LineContext, types::PyType};
 
 pub mod error;
 pub mod eval;
-pub mod func;
 pub mod lexer;
+pub mod meta;
 pub mod types;
 pub mod var;
 

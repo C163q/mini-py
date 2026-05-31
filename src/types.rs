@@ -3,12 +3,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::func::PyFunction;
+use crate::types::function::PyFunction;
 
 pub mod float;
+pub mod function;
 pub mod init;
 pub mod int;
 pub mod none;
+pub mod object;
 pub mod tbool;
 pub mod tstr;
 

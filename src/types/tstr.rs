@@ -3,8 +3,14 @@ use std::{fmt::Display, sync::Arc};
 use num_bigint::BigInt;
 
 use crate::{
-    Interpreter, def_func_pair, get_type,
-    types::{PyType, float::PyFloat, init, int::PyInt, tbool::PyBool},
+    Interpreter, get_type,
+    types::{
+        PyType,
+        float::PyFloat,
+        init::{self, PyFunctionMapper},
+        int::PyInt,
+        tbool::PyBool,
+    },
     var::PyValue,
 };
 
@@ -13,15 +19,16 @@ const TYPE_NAME: &str = "str";
 get_type!(TYPE_NAME);
 
 pub fn init_type(interpreter: Arc<Interpreter>) {
+    type Current = PyStr;
     init::init_type(
-        interpreter,
+        interpreter.clone(),
         TYPE_NAME,
         [
-            def_func_pair!(__str__, PyStr, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__int__, PyStr, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__bool__, PyStr, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__float__, PyStr, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__add__, PyStr, interpreter, &[TYPE_NAME, TYPE_NAME]),
+            PyFunctionMapper::from_method("__str__", Current::__str__),
+            PyFunctionMapper::from_method("__int__", Current::__int__),
+            PyFunctionMapper::from_method("__bool__", Current::__bool__),
+            PyFunctionMapper::from_method("__float__", Current::__float__),
+            PyFunctionMapper::from_method("__add__", Current::__add__),
         ],
     );
 }

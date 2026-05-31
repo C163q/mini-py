@@ -1,6 +1,6 @@
 use std::{any::Any, sync::Arc};
 
-use crate::{func::PyFunction, types::PyType};
+use crate::types::{PyType, function::PyFunction};
 
 pub trait PyValue: Any {
     fn get_type(&self) -> Arc<PyType>;

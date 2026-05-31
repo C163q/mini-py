@@ -10,12 +10,12 @@ use crate::{
     var::PyValue,
 };
 
-const TYPE_NAME: &str = "none";
+const TYPE_NAME: &str = "object";
 
 get_type!(TYPE_NAME);
 
 pub fn init_type(interpreter: Arc<Interpreter>) {
-    type Current = PyNone;
+    type Current = PyObject;
     init::init_type(
         interpreter.clone(),
         TYPE_NAME,
@@ -23,13 +23,13 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     );
 }
 
-/// None Value
+/// Object Value
 #[derive(Debug, Clone)]
-pub struct PyNone {
+pub struct PyObject {
     ty: Arc<PyType>,
 }
 
-impl PyNone {
+impl PyObject {
     pub fn new(interpreter: Arc<Interpreter>) -> Self {
         Self {
             ty: get_type(interpreter),
@@ -37,13 +37,13 @@ impl PyNone {
     }
 }
 
-impl PyValue for PyNone {
+impl PyValue for PyObject {
     fn get_type(&self) -> Arc<PyType> {
         self.ty.clone()
     }
 }
 
-impl PyNone {
+impl PyObject {
     pub fn __str__(&self, interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyStr {
         PyStr::new(interpreter, "None".to_string())
     }

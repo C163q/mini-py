@@ -5,10 +5,10 @@ use num_bigint::BigInt;
 use num_traits::cast::FromPrimitive;
 
 use crate::{
-    Interpreter, def_func_pair, get_type,
+    Interpreter, get_type,
     types::{
         PyType,
-        init::{self, ANY_TYPE_NAME},
+        init::{self, PyFunctionMapper},
         int::PyInt,
         tbool::PyBool,
         tstr::PyStr,
@@ -21,38 +21,29 @@ const TYPE_NAME: &str = "float";
 get_type!(TYPE_NAME);
 
 pub fn init_type(interpreter: Arc<Interpreter>) {
+    type Current = PyFloat;
     init::init_type(
-        interpreter,
+        interpreter.clone(),
         TYPE_NAME,
         [
-            def_func_pair!(__str__, PyFloat, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__int__, PyFloat, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__float__, PyFloat, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__bool__, PyFloat, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__pos__, PyFloat, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__neg__, PyFloat, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__add__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__sub__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__mul__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(
-                __floordiv__,
-                PyFloat,
-                interpreter,
-                &[TYPE_NAME, ANY_TYPE_NAME]
-            ),
-            def_func_pair!(
-                __truediv__,
-                PyFloat,
-                interpreter,
-                &[TYPE_NAME, ANY_TYPE_NAME]
-            ),
-            def_func_pair!(__mod__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__lt__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__le__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__gt__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__ge__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__eq__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
-            def_func_pair!(__ne__, PyFloat, interpreter, &[TYPE_NAME, ANY_TYPE_NAME]),
+            PyFunctionMapper::from_method("__str__", Current::__str__),
+            PyFunctionMapper::from_method("__int__", Current::__int__),
+            PyFunctionMapper::from_method("__float__", Current::__float__),
+            PyFunctionMapper::from_method("__bool__", Current::__bool__),
+            PyFunctionMapper::from_method("__pos__", Current::__pos__),
+            PyFunctionMapper::from_method("__neg__", Current::__neg__),
+            PyFunctionMapper::from_method("__add__", Current::__add__),
+            PyFunctionMapper::from_method("__sub__", Current::__sub__),
+            PyFunctionMapper::from_method("__mul__", Current::__mul__),
+            PyFunctionMapper::from_method("__floordiv__", Current::__floordiv__),
+            PyFunctionMapper::from_method("__truediv__", Current::__truediv__),
+            PyFunctionMapper::from_method("__mod__", Current::__mod__),
+            PyFunctionMapper::from_method("__lt__", Current::__lt__),
+            PyFunctionMapper::from_method("__le__", Current::__le__),
+            PyFunctionMapper::from_method("__gt__", Current::__gt__),
+            PyFunctionMapper::from_method("__ge__", Current::__ge__),
+            PyFunctionMapper::from_method("__eq__", Current::__eq__),
+            PyFunctionMapper::from_method("__ne__", Current::__ne__),
         ],
     )
 }

@@ -1,8 +1,12 @@
 use std::{fmt::Display, sync::Arc};
 
 use crate::{
-    Interpreter, def_func_pair, get_type,
-    types::{PyType, init, tstr::PyStr},
+    Interpreter, get_type,
+    types::{
+        PyType,
+        init::{self, PyFunctionMapper},
+        tstr::PyStr,
+    },
     var::PyValue,
 };
 
@@ -11,12 +15,13 @@ const TYPE_NAME: &str = "bool";
 get_type!(TYPE_NAME);
 
 pub fn init_type(interpreter: Arc<Interpreter>) {
+    type Current = PyBool;
     init::init_type(
-        interpreter,
+        interpreter.clone(),
         TYPE_NAME,
         [
-            def_func_pair!(__str__, PyBool, interpreter, &[TYPE_NAME]),
-            def_func_pair!(__bool__, PyBool, interpreter, &[TYPE_NAME]),
+            PyFunctionMapper::from_method("__str__", Current::__str__),
+            PyFunctionMapper::from_method("__bool__", Current::__bool__),
         ],
     );
 }
