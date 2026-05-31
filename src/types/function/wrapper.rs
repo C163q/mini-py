@@ -83,10 +83,11 @@ pub fn to_pyfunc(interpreter: Arc<Interpreter>, func: ResultFunc<ArcValue>) -> P
 
 pub fn method_to_pyfunc<T: PyValue, R: PyValue>(
     type_name: &'static str,
+    interpreter_arc: Arc<Interpreter>,
     func: BasicMethodFunc<T, R>,
 ) -> PyFunction {
     to_pyfunc(
-        Arc::new(Interpreter::new()),
+        interpreter_arc,
         method_to_func(
             type_name,
             Box::new(move |self_ref, interpreter, values| {

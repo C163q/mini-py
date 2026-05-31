@@ -23,7 +23,7 @@ impl PyFunctionMapper {
         Self { name, func }
     }
 
-    pub fn from_method<T, R, F>(name: &'static str, func: F) -> Self
+    pub fn from_method<T, R, F>(name: &'static str, interpreter: Arc<Interpreter>, func: F) -> Self
     where
         T: PyValue,
         R: PyValue,
@@ -31,11 +31,13 @@ impl PyFunctionMapper {
     {
         Self::new(
             name,
-            function::wrapper::method_to_pyfunc(name, Box::new(func)),
+            function::wrapper::method_to_pyfunc(name, interpreter, Box::new(func)),
         )
     }
 }
 
+/// TODO: init_type() only register type, and add functions in their own module, to avoid circular
+/// dependency
 pub(super) fn init_type<I>(interpreter: Arc<Interpreter>, type_name: &str, mapper: I)
 where
     I: IntoIterator<Item = PyFunctionMapper>,
@@ -50,6 +52,7 @@ where
 }
 
 pub fn register_types(interpreter: Arc<Interpreter>) {
+    function::init_type(interpreter.clone());
     none::init_type(interpreter.clone());
     int::init_type(interpreter.clone());
     tstr::init_type(interpreter.clone());

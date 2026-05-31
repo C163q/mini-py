@@ -7,11 +7,7 @@ use crate::{
     Interpreter,
     error::InterpreterError,
     get_type,
-    types::{
-        PyType,
-        init::{self, PyFunctionMapper},
-        tstr::PyStr,
-    },
+    types::{PyType, init::PyFunctionMapper, tstr::PyStr},
     var::PyValue,
 };
 
@@ -30,20 +26,26 @@ get_type!(TYPE_NAME);
 
 pub fn init_type(interpreter: Arc<Interpreter>) {
     type Current = PyFunction;
-    init::init_type(
-        interpreter.clone(),
-        TYPE_NAME,
-        [
-            PyFunctionMapper::new(
-                "__call__",
-                wrapper::to_pyfunc(
-                    interpreter.clone(),
-                    wrapper::method_to_func(TYPE_NAME, Box::new(Current::__call__)),
-                ),
+
+    // NEVER Call init::init_type() here, it will cause circular dependency
+
+    let ty = interpreter
+        .clone()
+        .register_type(Arc::new(PyType::new(TYPE_NAME)))
+        .expect("Failed to register type");
+
+    for PyFunctionMapper { name, func } in [
+        PyFunctionMapper::new(
+            "__call__",
+            wrapper::to_pyfunc(
+                interpreter.clone(),
+                wrapper::method_to_func(TYPE_NAME, Box::new(Current::__call__)),
             ),
-            PyFunctionMapper::from_method("__str__", Current::__str__),
-        ],
-    )
+        ),
+        PyFunctionMapper::from_method("__str__", interpreter.clone(), Current::__str__),
+    ] {
+        ty.add_function(name, func);
+    }
 }
 
 /// Int Value

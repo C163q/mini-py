@@ -20,8 +20,8 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
         interpreter.clone(),
         TYPE_NAME,
         [
-            PyFunctionMapper::from_method("__str__", Current::__str__),
-            PyFunctionMapper::from_method("__bool__", Current::__bool__),
+            PyFunctionMapper::from_method("__str__", interpreter.clone(), Current::__str__),
+            PyFunctionMapper::from_method("__bool__", interpreter.clone(), Current::__bool__),
         ],
     );
 }
