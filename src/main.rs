@@ -18,6 +18,6 @@ fn main() -> io::Result<()> {
         interpreter
             .clone()
             .eval_line(&input)
-            .unwrap_or_else(|e| eprintln!("Error: {}", e));
+            .expect("Unrecoverable error during evaluation");
     }
 }

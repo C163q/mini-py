@@ -228,6 +228,7 @@ pub enum TokenKind {
     Operator(Operator),
     Separator(Separator),
     Number(String),
+    String(String),
     Unknown(String),
 }
 
@@ -274,6 +275,10 @@ impl TokenKind {
         Self::Number(name)
     }
 
+    pub fn new_string(name: String) -> Self {
+        Self::String(name)
+    }
+
     pub fn new_unknown(name: String) -> Self {
         Self::Unknown(name)
     }
@@ -317,6 +322,64 @@ fn tokenize_number_following(mut idx: usize, chars: &[char], number: &mut String
     idx
 }
 
+fn get_escape_char(ch: char) -> Option<char> {
+    match ch {
+        'n' => Some('\n'),
+        't' => Some('\t'),
+        'r' => Some('\r'),
+        '\\' => Some('\\'),
+        '\'' => Some('\''),
+        '"' => Some('"'),
+        _ => None,
+    }
+}
+
+fn tokenize_string_literal(
+    mut idx: usize,
+    chars: &[char],
+    string: &mut String,
+) -> Result<usize, InterpreterError> {
+    debug_assert!(string.is_empty());
+
+    let quote_char = chars[idx];
+    idx += 1;
+    loop {
+        if idx >= chars.len() {
+            return Err(InterpreterError::new(String::from(
+                "Unexpected end of string literal",
+            )));
+        }
+
+        if chars[idx] == '\\' {
+            idx += 1;
+            if idx >= chars.len() {
+                return Err(InterpreterError::new(String::from(
+                    "Unexpected end of string literal",
+                )));
+            }
+
+            match get_escape_char(chars[idx]) {
+                Some(esc) => string.push(esc),
+                None => {
+                    return Err(InterpreterError::new(format!(
+                        "Invalid escape character '\\{}'",
+                        chars[idx]
+                    )));
+                }
+            }
+            idx += 1;
+        } else if chars[idx] == quote_char {
+            idx += 1;
+            break;
+        } else {
+            string.push(chars[idx]);
+            idx += 1;
+        }
+    }
+
+    Ok(idx)
+}
+
 pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
     let chars: Vec<_> = line.content.chars().collect();
     let mut idx = 0;
@@ -357,6 +420,14 @@ pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
             idx += 1;
             idx = tokenize_number_following(idx, &chars, &mut number);
             tokens.push(Token::new(TokenKind::new_number(number)));
+            continue;
+        }
+
+        // String literal
+        if chars[idx] == '\'' || chars[idx] == '"' {
+            let mut string = String::new();
+            idx = tokenize_string_literal(idx, &chars, &mut string)?;
+            tokens.push(Token::new(TokenKind::new_string(string)));
             continue;
         }
 

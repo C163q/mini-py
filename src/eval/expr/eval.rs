@@ -2,19 +2,18 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    error::InterpreterError,
     lexer::ast::{
         AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr, MulOp, Number,
         PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
     },
-    types::tbool::PyBool,
+    types::{error, none::PyNone, tbool::PyBool, tstr::PyStr},
     var::PyValue,
 };
 
 pub fn eval_number(
     _interpreter: Arc<Interpreter>,
     num: Number,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match num {
         Number::Int(num) => Ok(Arc::new(num)),
     }
@@ -23,23 +22,28 @@ pub fn eval_number(
 pub fn eval_primary_expr(
     interpreter: Arc<Interpreter>,
     expr: PrimaryExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         PrimaryExpr::Number(num) => eval_number(interpreter, num),
         PrimaryExpr::Expr(expr) => eval_expr(interpreter, *expr),
+        PrimaryExpr::None => Ok(Arc::new(PyNone::new(interpreter))),
+        PrimaryExpr::Str(str) => Ok(Arc::new(PyStr::new(interpreter, str))),
     }
 }
 
 pub fn eval_unary_expr(
     interpreter: Arc<Interpreter>,
     expr: UnaryExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     macro_rules! eval_unary {
         ($interpreter:ident, $expr:expr, $func:literal) => {{
             let expr_value = eval_unary_expr($interpreter.clone(), $expr)?;
-            let func = expr_value
-                .get_function($func)
-                .ok_or_else(|| InterpreterError::new(format!("Type does not support {}", $func)))?;
+            let func = expr_value.get_function($func).ok_or_else(|| {
+                error::get_type_error(
+                    $interpreter.clone(),
+                    format!("Type does not support {}", $func),
+                )
+            })?;
             func.call($interpreter.clone(), vec![expr_value])
         }};
     }
@@ -63,9 +67,12 @@ macro_rules! eval_binary {
     ($interpreter:ident, $lhs:expr, $eval_lhs:ident, $rhs:expr, $eval_rhs:ident, $func:literal) => {{
         let lhs = $eval_lhs($interpreter.clone(), $lhs)?;
         let rhs = $eval_rhs($interpreter.clone(), $rhs)?;
-        let func = lhs
-            .get_function($func)
-            .ok_or_else(|| InterpreterError::new(format!("Type does not support {}", $func)))?;
+        let func = lhs.get_function($func).ok_or_else(|| {
+            error::get_type_error(
+                $interpreter.clone(),
+                format!("Type does not support {}", $func),
+            )
+        })?;
         func.call($interpreter.clone(), vec![lhs, rhs])
     }};
 }
@@ -73,7 +80,7 @@ macro_rules! eval_binary {
 pub fn eval_mul_expr(
     interpreter: Arc<Interpreter>,
     expr: crate::lexer::ast::MulExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         MulExpr::Unary(expr) => eval_unary_expr(interpreter, expr),
         MulExpr::Expr { left, op, right } => match op {
@@ -124,7 +131,7 @@ pub fn eval_mul_expr(
 pub fn eval_add_expr(
     interpreter: Arc<Interpreter>,
     expr: AddExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         AddExpr::Mul(expr) => eval_mul_expr(interpreter, expr),
         AddExpr::Expr { left, op, right } => match op {
@@ -155,7 +162,7 @@ pub fn eval_add_expr(
 pub fn eval_rel_expr(
     interpreter: Arc<Interpreter>,
     expr: RelExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         RelExpr::Add(expr) => eval_add_expr(interpreter, expr),
         RelExpr::Expr { left, op, right } => match op {
@@ -206,7 +213,7 @@ pub fn eval_rel_expr(
 pub fn eval_eq_expr(
     interpreter: Arc<Interpreter>,
     expr: EqExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         EqExpr::Rel(expr) => eval_rel_expr(interpreter, expr),
         EqExpr::Expr { left, op, right } => match op {
@@ -237,15 +244,20 @@ pub fn eval_eq_expr(
 fn get_bool_value(
     interpreter: Arc<Interpreter>,
     value: Arc<dyn PyValue>,
-) -> Result<bool, InterpreterError> {
-    let bool_func = value
-        .get_function("__bool__")
-        .ok_or_else(|| InterpreterError::new("Type does not support __bool__".to_string()))?;
+) -> Result<bool, Arc<dyn PyValue>> {
+    let bool_func = value.get_function("__bool__").ok_or_else(|| {
+        error::get_type_error(
+            interpreter.clone(),
+            "Type does not support __bool__".to_string(),
+        )
+    })?;
     let bool_value = bool_func.call(interpreter.clone(), vec![value])?;
     let bool_value = bool_value
         .as_any()
         .downcast_ref::<PyBool>()
-        .ok_or_else(|| InterpreterError::new("__bool__ did not return a bool".to_string()))?
+        .ok_or_else(|| {
+            error::get_type_error(interpreter, "__bool__ did not return a bool".to_string())
+        })?
         .get_value();
     Ok(bool_value)
 }
@@ -253,7 +265,7 @@ fn get_bool_value(
 pub fn eval_not_expr(
     interpreter: Arc<Interpreter>,
     expr: LNotExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         LNotExpr::Eq(expr) => eval_eq_expr(interpreter, expr),
         LNotExpr::Not(expr) => {
@@ -267,7 +279,7 @@ pub fn eval_not_expr(
 pub fn eval_and_expr(
     interpreter: Arc<Interpreter>,
     expr: LAndExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         LAndExpr::Not(expr) => eval_not_expr(interpreter, expr),
         LAndExpr::And(left, right) => {
@@ -285,7 +297,7 @@ pub fn eval_and_expr(
 fn eval_or_expr(
     interpreter: Arc<Interpreter>,
     expr: LOrExpr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         LOrExpr::And(expr) => eval_and_expr(interpreter, expr),
         LOrExpr::Or(left, right) => {
@@ -303,6 +315,6 @@ fn eval_or_expr(
 pub fn eval_expr(
     interpreter: Arc<Interpreter>,
     expr: Expr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     eval_or_expr(interpreter, expr.value)
 }

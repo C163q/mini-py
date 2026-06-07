@@ -4,9 +4,7 @@ use std::{
 };
 
 use crate::{
-    Interpreter,
-    error::InterpreterError,
-    get_type,
+    Interpreter, get_type,
     types::{PyType, init::PyFunctionMapper, tstr::PyStr},
     var::PyValue,
 };
@@ -14,7 +12,7 @@ use crate::{
 pub mod wrapper;
 
 pub type BuiltinPyFunction = Arc<
-    dyn Fn(Arc<Interpreter>, Vec<Arc<dyn PyValue>>) -> Result<Arc<dyn PyValue>, InterpreterError>
+    dyn Fn(Arc<Interpreter>, Vec<Arc<dyn PyValue>>) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>>
         + Send
         + Sync
         + 'static,
@@ -91,15 +89,15 @@ impl PyFunction {
         &self,
         interpreter: Arc<Interpreter>,
         values: Vec<Arc<dyn PyValue>>,
-    ) -> Result<Arc<dyn PyValue>, InterpreterError> {
-        (self.value)(interpreter, values)
+    ) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+        self.call(interpreter, values)
     }
 
     pub fn call(
         &self,
         interpreter: Arc<Interpreter>,
         values: Vec<Arc<dyn PyValue>>,
-    ) -> Result<Arc<dyn PyValue>, InterpreterError> {
+    ) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
         (self.value)(interpreter, values)
     }
 }

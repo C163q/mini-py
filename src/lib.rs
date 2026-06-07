@@ -4,7 +4,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{error::InterpreterError, lexer::line::LineContext, types::PyType};
+use crate::{
+    error::InterpreterError,
+    lexer::line::LineContext,
+    types::{PyType, tstr::PyStr},
+};
 
 pub mod error;
 pub mod eval;
@@ -77,7 +81,43 @@ impl Interpreter {
     }
 
     pub fn eval_line(self: Arc<Self>, line: &str) -> Result<(), InterpreterError> {
-        let output = eval::eval_line(self.clone(), line)?;
+        let output = eval::eval_line(self.clone(), line);
+        let output = match output {
+            Ok(value) => value,
+            Err(err) => {
+                let str_func = match err.get_function("__str__") {
+                    Some(func) => func,
+                    None => {
+                        // Handle the case where the error does not have a __str__ method
+                        return Err(InterpreterError::new(format!(
+                            "Error does not have __str__ method: {}",
+                            err.get_type().get_name()
+                        )));
+                    }
+                };
+                let err_msg = match str_func.call(self.clone(), vec![err.clone()]) {
+                    Ok(msg) => match msg.as_any().downcast_ref::<PyStr>() {
+                        Some(py_str) => py_str.to_string(),
+                        None => {
+                            // Handle the case where __str__ does not return a string
+                            return Err(InterpreterError::new(format!(
+                                "__str__ did not return a string for error: {}",
+                                err.get_type().get_name()
+                            )));
+                        }
+                    },
+                    Err(err) => {
+                        // Handle the case where calling __str__ on the error fails
+                        return Err(InterpreterError::new(format!(
+                            "Failed to call __str__ on error: {}",
+                            err.get_type().get_name()
+                        )));
+                    }
+                };
+                eprintln!("{}", err_msg);
+                return Ok(());
+            }
+        };
         if let Some(output) = output
             && let Some(repl_output) = &self.repl_output
         {

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    error::InterpreterError,
     eval::ParseResult,
     lexer::{ast::Expr, tokenize::Token},
     var::PyValue,
@@ -22,6 +21,6 @@ pub fn parse_expr(
 pub fn eval_expr(
     interpreter: Arc<Interpreter>,
     expr: Expr,
-) -> Result<Arc<dyn PyValue>, InterpreterError> {
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     eval::eval_expr(interpreter, expr)
 }

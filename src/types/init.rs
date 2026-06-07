@@ -3,9 +3,7 @@ use std::sync::Arc;
 use crate::{
     Interpreter,
     types::{
-        PyType, float,
-        function::{self, PyFunction},
-        int, none, tbool, tstr,
+        PyType, error, float, function::{self, PyFunction}, int, none, tbool, tstr
     },
     var::PyValue,
 };
@@ -53,6 +51,7 @@ where
 
 pub fn register_types(interpreter: Arc<Interpreter>) {
     function::init_type(interpreter.clone());
+    error::base_excption::init_type(interpreter.clone());
     none::init_type(interpreter.clone());
     int::init_type(interpreter.clone());
     tstr::init_type(interpreter.clone());

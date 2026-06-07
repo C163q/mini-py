@@ -33,6 +33,38 @@ fn parse_number(
     }
 }
 
+fn parse_none(
+    _interpreter: Arc<Interpreter>,
+    token: &[Token],
+    idx: usize,
+) -> Option<ParseResult<()>> {
+    if idx >= token.len() {
+        return None;
+    }
+
+    if token[idx].value == TokenKind::Keyword(Keyword::None) {
+        Some(ParseResult::new(idx + 1, ()))
+    } else {
+        None
+    }
+}
+
+fn parse_string(
+    _interpreter: Arc<Interpreter>,
+    token: &[Token],
+    idx: usize,
+) -> Option<ParseResult<String>> {
+    if idx >= token.len() {
+        return None;
+    }
+
+    if let TokenKind::String(s) = &token[idx].value {
+        Some(ParseResult::new(idx + 1, s.clone()))
+    } else {
+        None
+    }
+}
+
 fn parse_primary_expr(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
@@ -40,6 +72,17 @@ fn parse_primary_expr(
 ) -> Option<ParseResult<PrimaryExpr>> {
     if idx >= tokens.len() {
         return None;
+    }
+
+    if parse_none(interpreter.clone(), tokens, idx).is_some() {
+        return Some(ParseResult::new(idx + 1, PrimaryExpr::new_none()));
+    }
+
+    if let Some(string) = parse_string(interpreter.clone(), tokens, idx) {
+        return Some(ParseResult::new(
+            string.idx,
+            PrimaryExpr::new_str(string.value),
+        ));
     }
 
     if let Some(number) = parse_number(interpreter.clone(), tokens, idx) {

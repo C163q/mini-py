@@ -397,6 +397,8 @@ impl UnaryExpr {
 pub enum PrimaryExpr {
     Expr(Box<Expr>),
     Number(Number),
+    None,
+    Str(String),
 }
 
 impl PrimaryExpr {
@@ -406,6 +408,14 @@ impl PrimaryExpr {
 
     pub fn new_number(num: Number) -> Self {
         Self::Number(num)
+    }
+
+    pub fn new_none() -> Self {
+        Self::None
+    }
+
+    pub fn new_str(s: String) -> Self {
+        Self::Str(s)
     }
 }
 

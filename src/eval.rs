@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    error::InterpreterError,
     lexer::{self, tokenize::Token},
-    types::tstr::PyStr,
+    types::{error, tstr::PyStr},
+    var::PyValue,
 };
 
 pub mod expr;
@@ -26,7 +26,7 @@ impl<T> ParseResult<T> {
 pub fn eval_line(
     interpreter: Arc<Interpreter>,
     line: &str,
-) -> Result<Option<PyStr>, InterpreterError> {
+) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
     let tokens = lexer::lex_line(interpreter.clone(), line)?;
     eval_line_from_token(interpreter, &tokens)
 }
@@ -34,21 +34,21 @@ pub fn eval_line(
 fn eval_line_from_token(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
-) -> Result<Option<PyStr>, InterpreterError> {
+) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
     if tokens.is_empty() {
         return Ok(None);
     }
     parse_and_eval_line(interpreter, tokens)
 }
 
-/// Ok(PyStr) if the line is valid, Err(InterpreterError) otherwise.
+/// Ok(PyStr) if the line is valid, Err(Arc<dyn PyValue>) otherwise.
 ///
 /// Note that PyStr is only used for REPL. Any effect of the line should be applied to the
 /// interpreter.
 fn parse_and_eval_line(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
-) -> Result<Option<PyStr>, InterpreterError> {
+) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
     let idx = 0;
 
     // <expr>
@@ -60,5 +60,8 @@ fn parse_and_eval_line(
         return Ok(Some(output));
     }
 
-    Err(InterpreterError::new("Invalid syntax".to_string()))
+    Err(error::get_syntax_error(
+        interpreter,
+        "Invalid syntax".to_string(),
+    ))
 }

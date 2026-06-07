@@ -1,17 +1,22 @@
 use std::sync::Arc;
 
-use crate::{Interpreter, error::InterpreterError, types::tstr::PyStr, var::PyValue};
+use crate::{
+    Interpreter,
+    types::{error, tstr::PyStr},
+    var::PyValue,
+};
 
 pub fn output_value(
     interpreter: Arc<Interpreter>,
     value: Arc<dyn PyValue>,
-) -> Result<PyStr, InterpreterError> {
+) -> Result<PyStr, Arc<dyn PyValue>> {
     if let Some(repr_func) = value.get_function("__repr__") {
         let repr_value = repr_func.call(interpreter.clone(), vec![value])?;
         if let Some(repr_str) = repr_value.as_any().downcast_ref::<PyStr>() {
             Ok(repr_str.clone())
         } else {
-            Err(InterpreterError::new(
+            Err(error::get_type_error(
+                interpreter,
                 "__repr__ did not return a string".to_string(),
             ))
         }
@@ -20,12 +25,14 @@ pub fn output_value(
         if let Some(str_str) = str_value.as_any().downcast_ref::<PyStr>() {
             Ok(str_str.clone())
         } else {
-            Err(InterpreterError::new(
+            Err(error::get_type_error(
+                interpreter,
                 "__str__ did not return a string".to_string(),
             ))
         }
     } else {
-        Err(InterpreterError::new(
+        Err(error::get_type_error(
+            interpreter,
             "Type does not support __repr__ or __str__".to_string(),
         ))
     }

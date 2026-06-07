@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    error::InterpreterError,
     types::{
-        self,
+        self, error,
         function::{BuiltinPyFunction, PyFunction},
     },
     var::PyValue,
@@ -12,7 +11,7 @@ use crate::{
 
 type ArcValue = Arc<dyn PyValue>;
 type ValueArgs = Vec<ArcValue>;
-type FuncResult<T> = Result<T, InterpreterError>;
+type FuncResult<T> = Result<T, Arc<dyn PyValue>>;
 
 type BasicFunc<T> = Box<dyn Fn(Arc<Interpreter>, ValueArgs) -> T + Send + Sync + 'static>;
 type ResultFunc<T> =
@@ -22,24 +21,30 @@ type BasicMethodFunc<T, R> =
 type MethodFunc<T> =
     Box<dyn Fn(&T, Arc<Interpreter>, ValueArgs) -> FuncResult<ArcValue> + Send + Sync + 'static>;
 
-pub fn check_args(expected: &[&str], got: &[Arc<dyn PyValue>]) -> Result<(), InterpreterError> {
+pub fn check_args(
+    interpreter: Arc<Interpreter>,
+    expected: &[&str],
+    got: &[Arc<dyn PyValue>],
+) -> Result<(), Arc<dyn PyValue>> {
     if expected.len() != got.len() {
-        return Err(InterpreterError::new(format!(
-            "Expected {} arguments, got {}",
-            expected.len(),
-            got.len()
-        )));
+        return Err(error::get_type_error(
+            interpreter,
+            format!("Expected {} arguments, got {}", expected.len(), got.len()),
+        ));
     }
 
     for (i, (&expected_type, arg)) in expected.iter().zip(got.iter()).enumerate() {
         if expected_type != types::init::ANY_TYPE_NAME && arg.get_type().get_name() != expected_type
         {
-            return Err(InterpreterError::new(format!(
-                "Argument {}: expected type '{}', got '{}'",
-                i + 1,
-                expected_type,
-                arg.get_type().get_name()
-            )));
+            return Err(error::get_type_error(
+                interpreter,
+                format!(
+                    "Argument {}: expected type '{}', got '{}'",
+                    i + 1,
+                    expected_type,
+                    arg.get_type().get_name()
+                ),
+            ));
         }
     }
 
@@ -52,18 +57,21 @@ pub fn method_to_func<T: PyValue>(
 ) -> ResultFunc<ArcValue> {
     Box::new(move |interpreter, mut values| {
         if values.is_empty() {
-            return Err(InterpreterError::new(format!(
-                "Expected type {}, got no arguments",
-                type_name
-            )));
+            return Err(error::get_type_error(
+                interpreter,
+                format!("Expected type {}, got no arguments", type_name),
+            ));
         }
         let other_values = values.split_off(1);
         let value = values[0].as_any().downcast_ref::<T>().ok_or_else(|| {
-            InterpreterError::new(format!(
-                "Expected first argument to be of type {}, got {}",
-                type_name,
-                values[0].get_type().get_name()
-            ))
+            error::get_type_error(
+                interpreter.clone(),
+                format!(
+                    "Expected first argument to be of type {}, got {}",
+                    type_name,
+                    values[0].get_type().get_name()
+                ),
+            )
         })?;
         func(value, interpreter, other_values)
     })

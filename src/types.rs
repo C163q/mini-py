@@ -5,6 +5,7 @@ use std::{
 
 use crate::types::function::PyFunction;
 
+pub mod error;
 pub mod float;
 pub mod function;
 pub mod init;
