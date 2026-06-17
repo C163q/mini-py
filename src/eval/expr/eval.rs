@@ -38,13 +38,8 @@ pub fn eval_unary_expr(
     macro_rules! eval_unary {
         ($interpreter:ident, $expr:expr, $func:literal) => {{
             let expr_value = eval_unary_expr($interpreter.clone(), $expr)?;
-            let func = expr_value.get_function($func).ok_or_else(|| {
-                error::get_type_error(
-                    $interpreter.clone(),
-                    format!("Type does not support {}", $func),
-                )
-            })?;
-            func.call($interpreter.clone(), vec![expr_value])
+            let func = expr_value.get_var($interpreter.clone(), $func)?;
+            $crate::var::call::call(func, $interpreter.clone(), vec![expr_value])
         }};
     }
     match expr {
@@ -67,13 +62,8 @@ macro_rules! eval_binary {
     ($interpreter:ident, $lhs:expr, $eval_lhs:ident, $rhs:expr, $eval_rhs:ident, $func:literal) => {{
         let lhs = $eval_lhs($interpreter.clone(), $lhs)?;
         let rhs = $eval_rhs($interpreter.clone(), $rhs)?;
-        let func = lhs.get_function($func).ok_or_else(|| {
-            error::get_type_error(
-                $interpreter.clone(),
-                format!("Type does not support {}", $func),
-            )
-        })?;
-        func.call($interpreter.clone(), vec![lhs, rhs])
+        let func = lhs.get_var($interpreter.clone(), $func)?;
+        $crate::var::call::call(func, $interpreter.clone(), vec![lhs, rhs])
     }};
 }
 
@@ -245,13 +235,8 @@ fn get_bool_value(
     interpreter: Arc<Interpreter>,
     value: Arc<dyn PyValue>,
 ) -> Result<bool, Arc<dyn PyValue>> {
-    let bool_func = value.get_function("__bool__").ok_or_else(|| {
-        error::get_type_error(
-            interpreter.clone(),
-            "Type does not support __bool__".to_string(),
-        )
-    })?;
-    let bool_value = bool_func.call(interpreter.clone(), vec![value])?;
+    let bool_func = value.get_var(interpreter.clone(), "__bool__")?;
+    let bool_value = crate::var::call::call(bool_func, interpreter.clone(), vec![value])?;
     let bool_value = bool_value
         .as_any()
         .downcast_ref::<PyBool>()

@@ -1,4 +1,7 @@
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::Display,
+    sync::{Arc, Mutex},
+};
 
 use num_bigint::BigInt;
 
@@ -13,7 +16,7 @@ use crate::{
         tbool::PyBool,
         tstr::PyStr,
     },
-    var::PyValue,
+    var::{PyValue, manager::VarManager},
 };
 
 const TYPE_NAME: &str = "float";
@@ -53,9 +56,10 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 }
 
 /// Int Value
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PyFloat {
     ty: Arc<PyType>,
+    vars: Mutex<VarManager>,
     value: f64,
 }
 
@@ -63,7 +67,18 @@ impl PyFloat {
     pub fn new(interpreter: Arc<Interpreter>, value: f64) -> Self {
         Self {
             ty: get_type(interpreter),
+            vars: Mutex::new(VarManager::new()),
             value,
+        }
+    }
+}
+
+impl Clone for PyFloat {
+    fn clone(&self) -> Self {
+        Self {
+            ty: self.ty.clone(),
+            vars: Mutex::new(self.vars.lock().unwrap().clone()),
+            value: self.value,
         }
     }
 }
@@ -71,6 +86,10 @@ impl PyFloat {
 impl PyValue for PyFloat {
     fn get_type(&self) -> Arc<PyType> {
         self.ty.clone()
+    }
+
+    fn get_var_manager(&self) -> std::sync::MutexGuard<'_, VarManager> {
+        self.vars.lock().unwrap()
     }
 }
 

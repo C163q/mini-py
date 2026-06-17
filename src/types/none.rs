@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::{
     Interpreter, get_type,
@@ -7,7 +7,7 @@ use crate::{
         init::{self, PyFunctionMapper},
         tstr::PyStr,
     },
-    var::PyValue,
+    var::{PyValue, manager::VarManager},
 };
 
 const TYPE_NAME: &str = "none";
@@ -28,15 +28,26 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 }
 
 /// None Value
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PyNone {
     ty: Arc<PyType>,
+    vars: Mutex<VarManager>,
 }
 
 impl PyNone {
     pub fn new(interpreter: Arc<Interpreter>) -> Self {
         Self {
             ty: get_type(interpreter),
+            vars: Mutex::new(VarManager::new()),
+        }
+    }
+}
+
+impl Clone for PyNone {
+    fn clone(&self) -> Self {
+        Self {
+            ty: self.ty.clone(),
+            vars: Mutex::new(self.vars.lock().unwrap().clone()),
         }
     }
 }
@@ -44,6 +55,10 @@ impl PyNone {
 impl PyValue for PyNone {
     fn get_type(&self) -> Arc<PyType> {
         self.ty.clone()
+    }
+
+    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+        self.vars.lock().unwrap()
     }
 }
 

@@ -13,7 +13,6 @@ use crate::{
 pub mod error;
 pub mod eval;
 pub mod lexer;
-pub mod meta;
 pub mod types;
 pub mod var;
 
@@ -85,9 +84,9 @@ impl Interpreter {
         let output = match output {
             Ok(value) => value,
             Err(err) => {
-                let str_func = match err.get_function("__str__") {
-                    Some(func) => func,
-                    None => {
+                let str_func = match err.get_var(self.clone(), "__str__") {
+                    Ok(func) => func,
+                    Err(_) => {
                         // Handle the case where the error does not have a __str__ method
                         return Err(InterpreterError::new(format!(
                             "Error does not have __str__ method: {}",
@@ -95,7 +94,7 @@ impl Interpreter {
                         )));
                     }
                 };
-                let err_msg = match str_func.call(self.clone(), vec![err.clone()]) {
+                let err_msg = match var::call::call(str_func, self.clone(), vec![err.clone()]) {
                     Ok(msg) => match msg.as_any().downcast_ref::<PyStr>() {
                         Some(py_str) => py_str.to_string(),
                         None => {

@@ -1,4 +1,7 @@
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::Display,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use crate::{
     Interpreter, get_type,
@@ -7,7 +10,7 @@ use crate::{
         init::{self, PyFunctionMapper},
         tstr::PyStr,
     },
-    var::PyValue,
+    var::{PyValue, manager::VarManager},
 };
 
 const TYPE_NAME: &str = "bool";
@@ -27,9 +30,10 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 }
 
 // Bool Value
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PyBool {
     ty: Arc<PyType>,
+    vars: Mutex<VarManager>,
     value: bool,
 }
 
@@ -37,6 +41,7 @@ impl PyBool {
     pub fn new(interpreter: Arc<Interpreter>, value: bool) -> Self {
         Self {
             ty: get_type(interpreter),
+            vars: Mutex::new(VarManager::new()),
             value,
         }
     }
@@ -46,9 +51,23 @@ impl PyBool {
     }
 }
 
+impl Clone for PyBool {
+    fn clone(&self) -> Self {
+        Self {
+            ty: self.ty.clone(),
+            vars: Mutex::new(self.vars.lock().unwrap().clone()),
+            value: self.value,
+        }
+    }
+}
+
 impl PyValue for PyBool {
     fn get_type(&self) -> Arc<PyType> {
         self.ty.clone()
+    }
+
+    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+        self.vars.lock().unwrap()
     }
 }
 

@@ -1,12 +1,12 @@
 use std::{
     fmt::{Debug, Display},
-    sync::Arc,
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use crate::{
     Interpreter, get_type,
     types::{PyType, init::PyFunctionMapper, tstr::PyStr},
-    var::PyValue,
+    var::{PyValue, manager::VarManager},
 };
 
 pub mod wrapper;
@@ -29,7 +29,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 
     let ty = interpreter
         .clone()
-        .register_type(Arc::new(PyType::new(TYPE_NAME)))
+        .register_type(Arc::new(PyType::new(TYPE_NAME, interpreter.clone())))
         .expect("Failed to register type");
 
     for PyFunctionMapper { name, func } in [
@@ -46,10 +46,10 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     }
 }
 
-/// Int Value
-#[derive(Clone)]
+/// Function Value
 pub struct PyFunction {
     ty: Arc<PyType>,
+    vars: Mutex<VarManager>,
     value: BuiltinPyFunction,
 }
 
@@ -59,10 +59,21 @@ impl Debug for PyFunction {
     }
 }
 
+impl Clone for PyFunction {
+    fn clone(&self) -> Self {
+        Self {
+            ty: self.ty.clone(),
+            vars: Mutex::new(self.vars.lock().unwrap().clone()),
+            value: self.value.clone(),
+        }
+    }
+}
+
 impl PyFunction {
     pub fn new(interpreter: Arc<Interpreter>, value: BuiltinPyFunction) -> Self {
         Self {
             ty: get_type(interpreter),
+            vars: Mutex::new(VarManager::new()),
             value,
         }
     }
@@ -71,6 +82,10 @@ impl PyFunction {
 impl PyValue for PyFunction {
     fn get_type(&self) -> Arc<PyType> {
         self.ty.clone()
+    }
+
+    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+        self.vars.lock().unwrap()
     }
 }
 

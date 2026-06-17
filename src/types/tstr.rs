@@ -1,4 +1,7 @@
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::Display,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use num_bigint::BigInt;
 
@@ -11,7 +14,7 @@ use crate::{
         int::PyInt,
         tbool::PyBool,
     },
-    var::PyValue,
+    var::{PyValue, manager::VarManager},
 };
 
 const TYPE_NAME: &str = "str";
@@ -34,9 +37,10 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 }
 
 /// String
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PyStr {
     ty: Arc<PyType>,
+    vars: Mutex<VarManager>,
     value: String,
 }
 
@@ -44,6 +48,7 @@ impl PyStr {
     pub fn new(interpreter: Arc<Interpreter>, value: String) -> Self {
         Self {
             ty: get_type(interpreter),
+            vars: Mutex::new(VarManager::new()),
             value,
         }
     }
@@ -52,6 +57,20 @@ impl PyStr {
 impl PyValue for PyStr {
     fn get_type(&self) -> Arc<PyType> {
         self.ty.clone()
+    }
+
+    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+        self.vars.lock().unwrap()
+    }
+}
+
+impl Clone for PyStr {
+    fn clone(&self) -> Self {
+        Self {
+            ty: self.ty.clone(),
+            vars: Mutex::new(self.vars.lock().unwrap().clone()),
+            value: self.value.clone(),
+        }
     }
 }
 

@@ -3,7 +3,9 @@ use std::sync::Arc;
 use crate::{
     Interpreter,
     types::{
-        PyType, error, float, function::{self, PyFunction}, int, none, tbool, tstr
+        PyType, error, float,
+        function::{self, PyFunction},
+        int, none, tbool, tstr, ttype,
     },
     var::PyValue,
 };
@@ -41,7 +43,8 @@ where
     I: IntoIterator<Item = PyFunctionMapper>,
 {
     let ty = interpreter
-        .register_type(Arc::new(PyType::new(type_name)))
+        .clone()
+        .register_type(Arc::new(PyType::new(type_name, interpreter)))
         .expect("Failed to register type");
 
     for PyFunctionMapper { name, func } in mapper {
@@ -50,7 +53,12 @@ where
 }
 
 pub fn register_types(interpreter: Arc<Interpreter>) {
+    // Special handling for `type`, since it has cyclic reference with itself and other types.
+    ttype::init_raw_type(interpreter.clone());
     function::init_type(interpreter.clone());
+    ttype::init_functions(interpreter.clone());
+
+    // Normal types
     error::base_excption::init_type(interpreter.clone());
     none::init_type(interpreter.clone());
     int::init_type(interpreter.clone());

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::{
     Interpreter, get_type,
@@ -7,7 +7,7 @@ use crate::{
         init::{self, PyFunctionMapper},
         tstr::PyStr,
     },
-    var::PyValue,
+    var::{PyValue, manager::VarManager},
 };
 
 const TYPE_NAME: &str = "BaseException";
@@ -28,9 +28,10 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 }
 
 /// BaseException Value
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PyBaseException {
     message: String,
+    vars: Mutex<VarManager>,
     ty: Arc<PyType>,
 }
 
@@ -38,6 +39,7 @@ impl PyBaseException {
     pub fn new(interpreter: Arc<Interpreter>, message: String) -> Self {
         Self {
             message,
+            vars: Mutex::new(VarManager::new()),
             ty: get_type(interpreter),
         }
     }
@@ -46,6 +48,10 @@ impl PyBaseException {
 impl PyValue for PyBaseException {
     fn get_type(&self) -> Arc<PyType> {
         self.ty.clone()
+    }
+
+    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+        self.vars.lock().unwrap()
     }
 }
 
