@@ -4,14 +4,14 @@ use num_bigint::BigInt;
 
 use crate::{
     Interpreter,
-    eval::ParseResult,
-    lexer::{
+    eval::{
+        ParseResult,
         ast::{
-            AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr, MulOp,
-            Number, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
+            AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, LValue, MulExpr,
+            MulOp, Number, PowExpr, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
         },
-        tokenize::{Keyword, Operator, Separator, Token, TokenKind},
     },
+    lexer::tokenize::{Keyword, Operator, Separator, Token, TokenKind},
 };
 
 fn parse_number(
@@ -24,10 +24,17 @@ fn parse_number(
     }
 
     if let TokenKind::Number(num) = &token[idx].value {
-        Some(ParseResult::new(
-            idx + 1,
-            Number::new_int(interpreter, BigInt::from_str(num).unwrap()),
-        ))
+        if num.contains('.') {
+            Some(ParseResult::new(
+                idx + 1,
+                Number::new_float(interpreter, num.parse::<f64>().unwrap()),
+            ))
+        } else {
+            Some(ParseResult::new(
+                idx + 1,
+                Number::new_int(interpreter, BigInt::from_str(num).unwrap()),
+            ))
+        }
     } else {
         None
     }
@@ -65,6 +72,22 @@ fn parse_string(
     }
 }
 
+pub(in crate::eval) fn parse_lvalue(
+    _interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<ParseResult<LValue>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let TokenKind::Identifier(name) = &tokens[idx].value {
+        Some(ParseResult::new(idx + 1, LValue::new(name.clone())))
+    } else {
+        None
+    }
+}
+
 fn parse_primary_expr(
     interpreter: Arc<Interpreter>,
     tokens: &[Token],
@@ -91,6 +114,14 @@ fn parse_primary_expr(
             PrimaryExpr::new_number(number.value),
         ));
     }
+
+    if let Some(lvalue) = parse_lvalue(interpreter.clone(), tokens, idx) {
+        return Some(ParseResult::new(
+            lvalue.idx,
+            PrimaryExpr::new_lvalue(lvalue.value),
+        ));
+    }
+
     if idx + 2 < tokens.len()
         && tokens[idx].value == TokenKind::Separator(Separator::LeftParen)
         && let Some(expr) = parse_expr(interpreter, tokens, idx + 1)
@@ -101,6 +132,35 @@ fn parse_primary_expr(
             PrimaryExpr::new_expr(expr.value),
         ));
     }
+    None
+}
+
+fn parse_pow_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[Token],
+    idx: usize,
+) -> Option<ParseResult<PowExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let Some(primary) = parse_primary_expr(interpreter.clone(), tokens, idx) {
+        if primary.idx + 1 < tokens.len()
+            && tokens[primary.idx].value == TokenKind::Operator(Operator::Pow)
+            && let Some(right) = parse_pow_expr(interpreter.clone(), tokens, primary.idx + 1)
+        {
+            return Some(ParseResult::new(
+                right.idx,
+                PowExpr::new_pow(primary.value, right.value),
+            ));
+        }
+
+        return Some(ParseResult::new(
+            primary.idx,
+            PowExpr::new_primary(primary.value),
+        ));
+    }
+
     None
 }
 
@@ -144,11 +204,8 @@ fn parse_unary_expr(
         ));
     }
 
-    if let Some(primary) = parse_primary_expr(interpreter, tokens, idx) {
-        return Some(ParseResult::new(
-            primary.idx,
-            UnaryExpr::new_primary(primary.value),
-        ));
+    if let Some(pow) = parse_pow_expr(interpreter, tokens, idx) {
+        return Some(ParseResult::new(pow.idx, UnaryExpr::new_pow(pow.value)));
     }
 
     None

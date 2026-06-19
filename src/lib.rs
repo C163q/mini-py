@@ -1,13 +1,21 @@
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::hash_map::Entry,
     io::{self, Write},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{self, AtomicBool},
+    },
 };
 
 use crate::{
     error::InterpreterError,
     lexer::line::LineContext,
     types::{PyType, tstr::PyStr},
+    var::{
+        PyValue,
+        getset::PyGetSetDef,
+        manager::{Var, VarManager},
+    },
 };
 
 pub mod error;
@@ -17,7 +25,8 @@ pub mod types;
 pub mod var;
 
 pub struct Interpreter {
-    type_mapper: Mutex<HashMap<String, Arc<PyType>>>,
+    initialized: AtomicBool,
+    var_mapper: Mutex<VarManager>,
     line_context: Mutex<LineContext>,
     repl_output: Option<io::Stdout>,
 }
@@ -44,14 +53,16 @@ impl Interpreter {
     /// Get the interpreter without initializing the built-in types.
     pub fn build() -> Self {
         Self {
-            type_mapper: Mutex::new(HashMap::new()),
+            initialized: AtomicBool::new(false),
+            var_mapper: Mutex::new(VarManager::new()),
             line_context: Mutex::new(LineContext::new()),
             repl_output: None,
         }
     }
 
     pub fn init_builtin_types(self: Arc<Self>) {
-        types::init::register_types(self);
+        types::init::register_types(self.clone());
+        AtomicBool::store(&self.initialized, true, atomic::Ordering::SeqCst);
     }
 
     /// Registers a new type with the interpreter. If a type with the same name already exists, an
@@ -60,12 +71,15 @@ impl Interpreter {
         self: Arc<Self>,
         ty: Arc<PyType>,
     ) -> Result<Arc<PyType>, InterpreterError> {
-        let mut type_mapper = self.type_mapper.lock().unwrap();
-        match type_mapper.entry(ty.get_name().to_string()) {
+        let mut var_mapper = self.var_mapper.lock().unwrap();
+        match var_mapper.get_mapper_mut().entry(ty.get_name().to_string()) {
             Entry::Occupied(_) => Err(InterpreterError::new(String::from(
                 "Type already registered",
             ))),
-            Entry::Vacant(entry) => Ok(entry.insert(ty).clone()),
+            Entry::Vacant(entry) => {
+                entry.insert(Var::new(ty.clone(), PyGetSetDef::default()));
+                Ok(ty)
+            }
         }
     }
 
@@ -75,8 +89,83 @@ impl Interpreter {
         }
     }
 
-    pub fn get_type(&self, name: &str) -> Option<Arc<PyType>> {
-        self.type_mapper.lock().unwrap().get(name).cloned()
+    pub fn get_type(self: Arc<Self>, name: &str) -> Result<Arc<PyType>, Arc<dyn PyValue>> {
+        let var = self
+            .var_mapper
+            .lock()
+            .unwrap() // VarManager
+            .get_mapper()
+            .get(name) // Option<&Var>
+            .cloned();
+
+        let var = match var {
+            Some(var) => var,
+            None => {
+                if !self.initialized.load(atomic::Ordering::SeqCst) {
+                    panic!("Interpreter is not initialized. Cannot get type '{}'", name);
+                }
+
+                return Err(types::error::get_name_error(
+                    self.clone(),
+                    format!("name '{}' is not defined", name),
+                ));
+            }
+        }
+        .get(self.clone())?; // Arc<dyn PyValue>
+
+        match var.as_arc_any().downcast::<PyType>() {
+            Ok(ty) => Ok(ty),
+            Err(_) => {
+                if !self.initialized.load(atomic::Ordering::SeqCst) {
+                    panic!("Interpreter is not initialized. Cannot get type '{}'", name);
+                }
+
+                Err(types::error::get_type_error(
+                    self.clone(),
+                    format!("name '{}' is not a type", name),
+                ))
+            }
+        }
+    }
+
+    pub fn get_var(self: Arc<Self>, name: &str) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+        let var = self
+            .var_mapper
+            .lock()
+            .unwrap() // VarManager
+            .get_mapper()
+            .get(name) // Option<Var>
+            .cloned();
+
+        let var = var
+            .ok_or_else(|| {
+                types::error::get_name_error(
+                    self.clone(),
+                    format!("name '{}' is not defined", name),
+                )
+            })?
+            .get(self.clone())?; // Arc<dyn PyValue>
+
+        Ok(var)
+    }
+
+    pub fn set_var(
+        self: Arc<Self>,
+        name: &str,
+        value: Arc<dyn PyValue>,
+    ) -> Result<(), Arc<dyn PyValue>> {
+        let interp = self.clone();
+
+        let mut lock = interp.var_mapper.lock().unwrap();
+        let mapper = lock.get_mapper_mut();
+
+        match mapper.entry(name.to_string()) {
+            Entry::Occupied(mut occupied) => occupied.get_mut().set(self, value),
+            Entry::Vacant(vacant) => {
+                vacant.insert(Var::new(value, PyGetSetDef::default()));
+                Ok(())
+            }
+        }
     }
 
     pub fn eval_line(self: Arc<Self>, line: &str) -> Result<(), InterpreterError> {

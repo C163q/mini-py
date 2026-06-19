@@ -16,8 +16,6 @@ type FuncResult<T> = Result<T, Arc<dyn PyValue>>;
 type BasicFunc<T> = Box<dyn Fn(Arc<Interpreter>, ValueArgs) -> T + Send + Sync + 'static>;
 type ResultFunc<T> =
     Box<dyn Fn(Arc<Interpreter>, ValueArgs) -> FuncResult<T> + Send + Sync + 'static>;
-type BasicMethodFunc<T, R> =
-    Box<dyn Fn(&T, Arc<Interpreter>, ValueArgs) -> R + Send + Sync + 'static>;
 type MethodFunc<T> =
     Box<dyn Fn(&T, Arc<Interpreter>, ValueArgs) -> FuncResult<ArcValue> + Send + Sync + 'static>;
 
@@ -89,18 +87,14 @@ pub fn to_pyfunc(interpreter: Arc<Interpreter>, func: ResultFunc<ArcValue>) -> P
     PyFunction::new(interpreter, to_arc_func(func))
 }
 
-pub fn method_to_pyfunc<T: PyValue, R: PyValue>(
+pub fn method_to_pyfunc<T, F>(
     type_name: &'static str,
     interpreter_arc: Arc<Interpreter>,
-    func: BasicMethodFunc<T, R>,
-) -> PyFunction {
-    to_pyfunc(
-        interpreter_arc,
-        method_to_func(
-            type_name,
-            Box::new(move |self_ref, interpreter, values| {
-                Ok(Arc::new(func(self_ref, interpreter, values)))
-            }),
-        ),
-    )
+    func: F,
+) -> PyFunction
+where
+    T: PyValue,
+    F: Fn(&T, Arc<Interpreter>, ValueArgs) -> FuncResult<ArcValue> + Send + Sync + 'static,
+{
+    to_pyfunc(interpreter_arc, method_to_func(type_name, Box::new(func)))
 }

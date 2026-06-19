@@ -2,7 +2,33 @@ use std::sync::Arc;
 
 use num_bigint::BigInt;
 
-use crate::{Interpreter, types::int::PyInt};
+use crate::{
+    Interpreter,
+    types::{float::PyFloat, int::PyInt},
+};
+
+#[derive(Debug, Clone)]
+pub struct Assign {
+    pub target: LValue,
+    pub value: Expr,
+}
+
+impl Assign {
+    pub fn new(target: LValue, value: Expr) -> Self {
+        Self { target, value }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LValue {
+    pub name: String,
+}
+
+impl LValue {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Expr {
@@ -44,6 +70,8 @@ impl_expr!(
     MulExpr,
     new_unary,
     UnaryExpr,
+    new_pow,
+    PowExpr,
     new_primary,
     PrimaryExpr,
     new_number,
@@ -87,6 +115,10 @@ impl LOrExpr {
 
     pub fn new_unary(expr: UnaryExpr) -> Self {
         Self::And(LAndExpr::new_unary(expr))
+    }
+
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::And(LAndExpr::new_pow(expr))
     }
 
     pub fn new_primary(expr: PrimaryExpr) -> Self {
@@ -133,6 +165,10 @@ impl LAndExpr {
         Self::Not(LNotExpr::new_unary(expr))
     }
 
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::Not(LNotExpr::new_pow(expr))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Not(LNotExpr::new_primary(expr))
     }
@@ -171,6 +207,10 @@ impl LNotExpr {
 
     pub fn new_unary(expr: UnaryExpr) -> Self {
         Self::Eq(EqExpr::new_unary(expr))
+    }
+
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::Eq(EqExpr::new_pow(expr))
     }
 
     pub fn new_primary(expr: PrimaryExpr) -> Self {
@@ -223,6 +263,10 @@ impl EqExpr {
         Self::Rel(RelExpr::new_unary(expr))
     }
 
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::Rel(RelExpr::new_pow(expr))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Rel(RelExpr::new_primary(expr))
     }
@@ -271,6 +315,10 @@ impl RelExpr {
         Self::Add(AddExpr::new_unary(expr))
     }
 
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::Add(AddExpr::new_pow(expr))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Add(AddExpr::new_primary(expr))
     }
@@ -313,6 +361,10 @@ impl AddExpr {
         Self::Mul(MulExpr::new_unary(expr))
     }
 
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::Mul(MulExpr::new_pow(expr))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Mul(MulExpr::new_primary(expr))
     }
@@ -353,6 +405,10 @@ impl MulExpr {
         Self::Unary(expr)
     }
 
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::Unary(UnaryExpr::new_pow(expr))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Unary(UnaryExpr::new_primary(expr))
     }
@@ -373,19 +429,49 @@ pub enum UnaryOp {
 #[derive(Debug, Clone)]
 pub enum UnaryExpr {
     Expr { op: UnaryOp, expr: Box<UnaryExpr> },
-    Primary(PrimaryExpr),
+    Pow(PowExpr),
 }
 
 impl UnaryExpr {
-    pub fn new_primary(expr: PrimaryExpr) -> Self {
-        Self::Primary(expr)
-    }
-
     pub fn new_unary(op: UnaryOp, expr: UnaryExpr) -> Self {
         Self::Expr {
             op,
             expr: Box::new(expr),
         }
+    }
+
+    pub fn new_pow(expr: PowExpr) -> Self {
+        Self::Pow(expr)
+    }
+
+    pub fn new_primary(expr: PrimaryExpr) -> Self {
+        Self::Pow(PowExpr::new_primary(expr))
+    }
+
+    pub fn new_number(num: Number) -> Self {
+        Self::Pow(PowExpr::new_number(num))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum PowExpr {
+    Expr {
+        left: Box<PrimaryExpr>,
+        right: Box<PowExpr>,
+    },
+    Primary(PrimaryExpr),
+}
+
+impl PowExpr {
+    pub fn new_pow(left: PrimaryExpr, right: PowExpr) -> Self {
+        Self::Expr {
+            left: Box::new(left),
+            right: Box::new(right),
+        }
+    }
+
+    pub fn new_primary(expr: PrimaryExpr) -> Self {
+        Self::Primary(expr)
     }
 
     pub fn new_number(num: Number) -> Self {
@@ -399,6 +485,7 @@ pub enum PrimaryExpr {
     Number(Number),
     None,
     Str(String),
+    LValue(LValue),
 }
 
 impl PrimaryExpr {
@@ -417,15 +504,24 @@ impl PrimaryExpr {
     pub fn new_str(s: String) -> Self {
         Self::Str(s)
     }
+
+    pub fn new_lvalue(lvalue: LValue) -> Self {
+        Self::LValue(lvalue)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum Number {
-    Int(PyInt), // TODO: support float
+    Int(PyInt),
+    Float(PyFloat),
 }
 
 impl Number {
     pub fn new_int(interpreter: Arc<Interpreter>, num: BigInt) -> Self {
         Self::Int(PyInt::new(interpreter, num))
+    }
+
+    pub fn new_float(interpreter: Arc<Interpreter>, num: f64) -> Self {
+        Self::Float(PyFloat::new(interpreter, num))
     }
 }

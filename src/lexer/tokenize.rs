@@ -322,6 +322,13 @@ fn tokenize_number_following(mut idx: usize, chars: &[char], number: &mut String
     idx
 }
 
+fn tokenize_number(idx: usize, chars: &[char]) -> (usize, String) {
+    let mut number = String::new();
+    number.push(chars[idx]);
+    let next_idx = tokenize_number_following(idx + 1, chars, &mut number);
+    (next_idx, number)
+}
+
 fn get_escape_char(ch: char) -> Option<char> {
     match ch {
         'n' => Some('\n'),
@@ -415,10 +422,30 @@ pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
 
         // Number
         if chars[idx].is_ascii_digit() {
-            let mut number = String::new();
-            number.push(chars[idx]);
-            idx += 1;
-            idx = tokenize_number_following(idx, &chars, &mut number);
+            let (i, mut number) = tokenize_number(idx, &chars);
+            idx = i;
+
+            // Float
+            if idx < chars.len() && chars[idx] == '.' {
+                number.push(chars[idx]);
+                idx += 1;
+                if idx < chars.len() && chars[idx].is_ascii_digit() {
+                    // e.g. 1.2
+                    let (i, after_dot) = tokenize_number(idx, &chars);
+                    idx = i;
+                    number.push_str(&after_dot);
+                } else if idx < chars.len() && (chars[idx].is_alphabetic() || chars[idx] == '_') {
+                    // 1.a INVALID
+                    // 1.() OK, but we will tokenize it as 1. and () separately
+                    return Err(InterpreterError::new(String::from(
+                        "Invalid float literal: expected digit after '.'",
+                    )));
+                } else {
+                    // Allow float literals like '1.'
+                    number.push('0');
+                }
+            }
+
             tokens.push(Token::new(TokenKind::new_number(number)));
             continue;
         }
@@ -434,11 +461,29 @@ pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
         // Operator
         match chars[idx] {
             // <op>
-            '.' | '~' => {
+            '~' => {
                 tokens.push(Token::new(
                     TokenKind::new_operator_from_str(&chars[idx].to_string()).unwrap(),
                 ));
                 idx += 1;
+                continue;
+            }
+            // . => Dot, .1 => Float
+            '.' => {
+                idx += 1;
+
+                if idx < chars.len() && chars[idx].is_ascii_digit() {
+                    // Number starting with dot, e.g. .1
+                    let (i, number) = tokenize_number(idx, &chars);
+                    idx = i;
+                    tokens.push(Token::new(TokenKind::new_number(format!("0.{}", number))));
+                } else {
+                    // Dot operator
+                    tokens.push(Token::new(
+                        TokenKind::new_operator_from_str(&chars[idx - 1].to_string()).unwrap(),
+                    ));
+                }
+
                 continue;
             }
             // <op> | <op>=

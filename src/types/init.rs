@@ -7,7 +7,7 @@ use crate::{
         function::{self, PyFunction},
         int, none, tbool, tstr, ttype,
     },
-    var::PyValue,
+    var::{IntoPyValueArcResult, PyValue},
 };
 
 pub const ANY_TYPE_NAME: &str = "$builtin_any";
@@ -26,12 +26,14 @@ impl PyFunctionMapper {
     pub fn from_method<T, R, F>(name: &'static str, interpreter: Arc<Interpreter>, func: F) -> Self
     where
         T: PyValue,
-        R: PyValue,
+        R: IntoPyValueArcResult,
         F: (Fn(&T, Arc<Interpreter>, Vec<Arc<dyn PyValue>>) -> R) + Send + Sync + 'static,
     {
         Self::new(
             name,
-            function::wrapper::method_to_pyfunc(name, interpreter, Box::new(func)),
+            function::wrapper::method_to_pyfunc(name, interpreter, move |value, interp, args| {
+                func(value, interp, args).into_pyvalue_arc()
+            }),
         )
     }
 }

@@ -5,7 +5,7 @@ use std::{
 
 use num_bigint::BigInt;
 
-use num_traits::cast::FromPrimitive;
+use num_traits::{Pow, ToPrimitive, cast::FromPrimitive};
 
 use crate::{
     Interpreter, get_type,
@@ -45,6 +45,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
             ),
             PyFunctionMapper::from_method("__truediv__", interpreter.clone(), Current::__truediv__),
             PyFunctionMapper::from_method("__mod__", interpreter.clone(), Current::__mod__),
+            PyFunctionMapper::from_method("__pow__", interpreter.clone(), Current::__pow__),
             PyFunctionMapper::from_method("__lt__", interpreter.clone(), Current::__lt__),
             PyFunctionMapper::from_method("__le__", interpreter.clone(), Current::__le__),
             PyFunctionMapper::from_method("__gt__", interpreter.clone(), Current::__gt__),
@@ -104,6 +105,8 @@ macro_rules! def_binary_op {
         pub fn $func_name(&self, interpreter: Arc<Interpreter>, values: Vec<Arc<dyn PyValue>>) -> $ret {
             if let Some(other_float) = values[0].as_any().downcast_ref::<PyFloat>() {
                 $ret::new(interpreter, self.value $op other_float.value)
+            } else if let Some(other_int) = values[0].as_any().downcast_ref::<PyInt>() {
+                $ret::new(interpreter, self.value $op other_int.value().to_f64().unwrap())
             } else {
                 // TODO: Implement error handling
                 panic!(
@@ -117,6 +120,10 @@ macro_rules! def_binary_op {
 }
 
 impl PyFloat {
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+
     pub fn __str__(&self, interpreter: Arc<Interpreter>, _values: Vec<Arc<dyn PyValue>>) -> PyStr {
         PyStr::new(interpreter, self.value.to_string())
     }
@@ -168,10 +175,32 @@ impl PyFloat {
     ) -> PyFloat {
         if let Some(other_float) = values[0].as_any().downcast_ref::<PyFloat>() {
             PyFloat::new(interpreter, (self.value / other_float.value).floor())
+        } else if let Some(other_int) = values[0].as_any().downcast_ref::<PyInt>() {
+            PyFloat::new(
+                interpreter,
+                (self.value / other_int.value().to_f64().unwrap()).floor(),
+            )
         } else {
             // TODO: Implement error handling
             panic!(
                 "Unsupported operand type(s) for //: 'float' and '{}'",
+                values[0].get_type().get_name()
+            );
+        }
+    }
+
+    pub fn __pow__(&self, interpreter: Arc<Interpreter>, values: Vec<Arc<dyn PyValue>>) -> PyFloat {
+        if let Some(other_float) = values[0].as_any().downcast_ref::<PyFloat>() {
+            PyFloat::new(interpreter, Pow::pow(self.value, other_float.value))
+        } else if let Some(other_int) = values[0].as_any().downcast_ref::<PyInt>() {
+            PyFloat::new(
+                interpreter,
+                Pow::pow(self.value, other_int.value().to_f64().unwrap()),
+            )
+        } else {
+            // TODO: Implement error handling
+            panic!(
+                "Unsupported operand type(s) for **: 'float' and '{}'",
                 values[0].get_type().get_name()
             );
         }

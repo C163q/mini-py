@@ -7,6 +7,8 @@ use crate::{
     var::PyValue,
 };
 
+pub mod assign;
+pub mod ast;
 pub mod expr;
 pub mod output;
 
@@ -58,6 +60,14 @@ fn parse_and_eval_line(
         let value = expr::eval_expr(interpreter.clone(), expr.value)?;
         let output = output::output_value(interpreter.clone(), value)?;
         return Ok(Some(output));
+    }
+
+    // assign <lval> = <expr>
+    if let Some(assign) = assign::parse_assign(interpreter.clone(), tokens, idx)
+        && assign.idx == tokens.len()
+    {
+        assign::eval_assign(interpreter.clone(), assign.value)?;
+        return Ok(None);
     }
 
     Err(error::get_syntax_error(

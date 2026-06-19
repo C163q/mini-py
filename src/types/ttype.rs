@@ -125,7 +125,7 @@ impl PyType {
     }
 
     pub fn add_function(&self, name: &str, func: PyFunction) {
-        self.inner.vars.lock().unwrap().map.insert(
+        self.inner.vars.lock().unwrap().get_mapper_mut().insert(
             name.to_string(),
             Var::new(Arc::new(func), PyGetSetDef::default()),
         );

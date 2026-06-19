@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::{Interpreter, lexer::tokenize::Token, types::error, var::PyValue};
 
-pub mod ast;
 pub mod indent;
 pub mod line;
 pub mod tokenize;

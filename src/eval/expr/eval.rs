@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    lexer::ast::{
+    eval::ast::{
         AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr, MulOp, Number,
-        PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
+        PowExpr, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
     },
     types::{error, none::PyNone, tbool::PyBool, tstr::PyStr},
     var::PyValue,
@@ -16,6 +16,7 @@ pub fn eval_number(
 ) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match num {
         Number::Int(num) => Ok(Arc::new(num)),
+        Number::Float(num) => Ok(Arc::new(num)),
     }
 }
 
@@ -28,6 +29,35 @@ pub fn eval_primary_expr(
         PrimaryExpr::Expr(expr) => eval_expr(interpreter, *expr),
         PrimaryExpr::None => Ok(Arc::new(PyNone::new(interpreter))),
         PrimaryExpr::Str(str) => Ok(Arc::new(PyStr::new(interpreter, str))),
+        PrimaryExpr::LValue(lvalue) => interpreter.get_var(&lvalue.name),
+    }
+}
+
+macro_rules! eval_binary {
+    ($interpreter:ident, $lhs:expr, $eval_lhs:ident, $rhs:expr, $eval_rhs:ident, $func:literal) => {{
+        let lhs = $eval_lhs($interpreter.clone(), $lhs)?;
+        let rhs = $eval_rhs($interpreter.clone(), $rhs)?;
+        let func = lhs.get_var($interpreter.clone(), $func)?;
+        $crate::var::call::call(func, $interpreter.clone(), vec![lhs, rhs])
+    }};
+}
+
+pub fn eval_pow_expr(
+    interpreter: Arc<Interpreter>,
+    expr: PowExpr,
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+    match expr {
+        PowExpr::Primary(expr) => eval_primary_expr(interpreter, expr),
+        PowExpr::Expr { left, right } => {
+            eval_binary!(
+                interpreter,
+                *left,
+                eval_primary_expr,
+                *right,
+                eval_pow_expr,
+                "__pow__"
+            )
+        }
     }
 }
 
@@ -43,7 +73,7 @@ pub fn eval_unary_expr(
         }};
     }
     match expr {
-        UnaryExpr::Primary(expr) => eval_primary_expr(interpreter, expr),
+        UnaryExpr::Pow(expr) => eval_pow_expr(interpreter, expr),
         UnaryExpr::Expr { op, expr } => match op {
             UnaryOp::Pos => {
                 eval_unary!(interpreter, *expr, "__pos__")
@@ -58,18 +88,9 @@ pub fn eval_unary_expr(
     }
 }
 
-macro_rules! eval_binary {
-    ($interpreter:ident, $lhs:expr, $eval_lhs:ident, $rhs:expr, $eval_rhs:ident, $func:literal) => {{
-        let lhs = $eval_lhs($interpreter.clone(), $lhs)?;
-        let rhs = $eval_rhs($interpreter.clone(), $rhs)?;
-        let func = lhs.get_var($interpreter.clone(), $func)?;
-        $crate::var::call::call(func, $interpreter.clone(), vec![lhs, rhs])
-    }};
-}
-
 pub fn eval_mul_expr(
     interpreter: Arc<Interpreter>,
-    expr: crate::lexer::ast::MulExpr,
+    expr: MulExpr,
 ) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
         MulExpr::Unary(expr) => eval_unary_expr(interpreter, expr),

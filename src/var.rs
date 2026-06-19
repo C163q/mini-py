@@ -28,13 +28,13 @@ pub trait PyValue: Any + Send + Sync {
         name: &str,
     ) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
         // From var
-        if let Some(var) = self.get_var_manager().map.get(name) {
-            return var.getset.get(interpreter, &var.value);
+        if let Some(var) = self.get_var_manager().get_mapper().get(name) {
+            return var.get(interpreter);
         }
 
         // From type
-        if let Some(var) = self.get_type().get_var_manager().map.get(name) {
-            return var.getset.get(interpreter, &var.value);
+        if let Some(var) = self.get_type().get_var_manager().get_mapper().get(name) {
+            return var.get(interpreter);
         }
 
         Err(error::get_attribute_error(
@@ -54,13 +54,13 @@ pub trait PyValue: Any + Send + Sync {
         value: Arc<dyn PyValue>,
     ) -> Result<(), Arc<dyn PyValue>> {
         // From var
-        if let Some(var) = self.get_var_manager().map.get_mut(name) {
-            return var.getset.set(interpreter, &mut var.value, value);
+        if let Some(var) = self.get_var_manager().get_mapper_mut().get_mut(name) {
+            return var.set(interpreter, value);
         }
 
         {
             self.get_var_manager()
-                .map
+                .get_mapper_mut()
                 .insert(name.to_string(), Var::new(value, PyGetSetDef::default()));
         }
 
@@ -86,7 +86,11 @@ impl<T: PyValue + Clone> PyValue for Box<T> {
 }
 
 impl dyn PyValue {
-    pub fn as_any(&self) -> &dyn Any {
+    pub fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
+
+    pub fn as_arc_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> {
         self
     }
 }
@@ -94,5 +98,30 @@ impl dyn PyValue {
 impl Debug for dyn PyValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "<{} object>", self.get_type().get_name())
+    }
+}
+
+pub trait IntoPyValueArcResult {
+    fn into_pyvalue_arc(self) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>>;
+}
+
+impl<T> IntoPyValueArcResult for T
+where
+    T: PyValue + 'static,
+{
+    fn into_pyvalue_arc(self) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+        Ok(Arc::new(self))
+    }
+}
+
+impl IntoPyValueArcResult for Arc<dyn PyValue> {
+    fn into_pyvalue_arc(self) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+        Ok(self)
+    }
+}
+
+impl IntoPyValueArcResult for Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+    fn into_pyvalue_arc(self) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+        self
     }
 }

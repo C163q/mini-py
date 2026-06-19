@@ -18,3 +18,8 @@ pub fn get_attribute_error(interpreter: Arc<Interpreter>, message: String) -> Ar
     // AttributeError is not implemented yet, so we return BaseException instead
     Arc::new(base_excption::PyBaseException::new(interpreter, message))
 }
+
+pub fn get_name_error(interpreter: Arc<Interpreter>, message: String) -> Arc<dyn PyValue> {
+    // NameError is not implemented yet, so we return BaseException instead
+    Arc::new(base_excption::PyBaseException::new(interpreter, message))
+}
