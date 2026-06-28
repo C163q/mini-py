@@ -1,8 +1,12 @@
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use crate::{
     Interpreter,
-    lexer::{self, tokenize::Token},
+    lexer::{
+        self,
+        indent::Indent,
+        tokenize::{Token, TokenKind},
+    },
     types::{error, tstr::PyStr},
     var::PyValue,
 };
@@ -29,7 +33,26 @@ pub fn eval_line(
     interpreter: Arc<Interpreter>,
     line: &str,
 ) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
-    let tokens = lexer::lex_line(interpreter.clone(), line)?;
+    eval_line_with_indent(interpreter, line, &[])
+}
+
+pub fn eval_line_with_indent(
+    interpreter: Arc<Interpreter>,
+    line: &str,
+    indent_base: &[Indent],
+) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
+    let mut tokens = lexer::lex_line_with_indent(interpreter.clone(), line, indent_base)?;
+
+    if tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if matches!(tokens[0].value, TokenKind::Block(_)) {
+        let mut block_token = tokens.split_off(1);
+        mem::swap(&mut tokens, &mut block_token);
+        eval_line_from_token(interpreter.clone(), &block_token)?;
+    }
+
     eval_line_from_token(interpreter, &tokens)
 }
 

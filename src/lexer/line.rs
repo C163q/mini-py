@@ -73,7 +73,7 @@ impl LineConcatenator {
 /// ```
 ///
 /// would be considered as a single line, and the content of the line would be `s = """\nvalue1\nvalue2\n"""`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     pub indent: Vec<Indent>,
     pub content: String,
@@ -91,7 +91,7 @@ macro_rules! get_line_branch {
             match indent {
                 Indent::$current(count) => {
                     *count = NonZero::new(count.get() + 1).ok_or_else(|| {
-                        InterpreterError::new(String::from("Indentation too large"))
+                        InterpreterError::new_lexical_error(String::from("Indentation too large"))
                     })?
                 }
                 Indent::$other(_) => {
@@ -161,7 +161,7 @@ fn get_line_content(
             ')' => {
                 if let Some(BracketType::Parenthesis) = last.bracket_stack.pop() {
                 } else {
-                    return Err(InterpreterError::new(String::from(
+                    return Err(InterpreterError::new_lexical_error(String::from(
                         "Unmatched closing parenthesis",
                     )));
                 }
@@ -169,7 +169,7 @@ fn get_line_content(
             ']' => {
                 if let Some(BracketType::Square) = last.bracket_stack.pop() {
                 } else {
-                    return Err(InterpreterError::new(String::from(
+                    return Err(InterpreterError::new_lexical_error(String::from(
                         "Unmatched closing square bracket",
                     )));
                 }
@@ -177,7 +177,7 @@ fn get_line_content(
             '}' => {
                 if let Some(BracketType::Curly) = last.bracket_stack.pop() {
                 } else {
-                    return Err(InterpreterError::new(String::from(
+                    return Err(InterpreterError::new_lexical_error(String::from(
                         "Unmatched closing curly bracket",
                     )));
                 }

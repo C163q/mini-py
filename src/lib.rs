@@ -1,6 +1,7 @@
 use std::{
     collections::hash_map::Entry,
     io::{self, Write},
+    mem,
     sync::{
         Arc, Mutex,
         atomic::{self, AtomicBool},
@@ -9,7 +10,7 @@ use std::{
 
 use crate::{
     error::InterpreterError,
-    lexer::line::LineContext,
+    lexer::{BlockBuilder, line::LineContext},
     types::{PyType, tstr::PyStr},
     var::{
         PyValue,
@@ -28,6 +29,7 @@ pub struct Interpreter {
     initialized: AtomicBool,
     var_mapper: Mutex<VarManager>,
     line_context: Mutex<LineContext>,
+    block_context: Mutex<BlockBuilder>,
     repl_output: Option<io::Stdout>,
 }
 
@@ -56,6 +58,7 @@ impl Interpreter {
             initialized: AtomicBool::new(false),
             var_mapper: Mutex::new(VarManager::new()),
             line_context: Mutex::new(LineContext::new()),
+            block_context: Mutex::new(BlockBuilder::new()),
             repl_output: None,
         }
     }
@@ -73,7 +76,7 @@ impl Interpreter {
     ) -> Result<Arc<PyType>, InterpreterError> {
         let mut var_mapper = self.var_mapper.lock().unwrap();
         match var_mapper.get_mapper_mut().entry(ty.get_name().to_string()) {
-            Entry::Occupied(_) => Err(InterpreterError::new(String::from(
+            Entry::Occupied(_) => Err(InterpreterError::new_unhandled(String::from(
                 "Type already registered",
             ))),
             Entry::Vacant(entry) => {
@@ -177,7 +180,7 @@ impl Interpreter {
                     Ok(func) => func,
                     Err(_) => {
                         // Handle the case where the error does not have a __str__ method
-                        return Err(InterpreterError::new(format!(
+                        return Err(InterpreterError::new_unhandled(format!(
                             "Error does not have __str__ method: {}",
                             err.get_type().get_name()
                         )));
@@ -188,7 +191,7 @@ impl Interpreter {
                         Some(py_str) => py_str.to_string(),
                         None => {
                             // Handle the case where __str__ does not return a string
-                            return Err(InterpreterError::new(format!(
+                            return Err(InterpreterError::new_unhandled(format!(
                                 "__str__ did not return a string for error: {}",
                                 err.get_type().get_name()
                             )));
@@ -196,7 +199,7 @@ impl Interpreter {
                     },
                     Err(err) => {
                         // Handle the case where calling __str__ on the error fails
-                        return Err(InterpreterError::new(format!(
+                        return Err(InterpreterError::new_unhandled(format!(
                             "Failed to call __str__ on error: {}",
                             err.get_type().get_name()
                         )));
@@ -212,5 +215,10 @@ impl Interpreter {
             writeln!(repl_output.lock(), "{}", output).ok();
         }
         Ok(())
+    }
+
+    pub fn get_and_clear_block_context(self: Arc<Self>) -> BlockBuilder {
+        let mut block_context = self.block_context.lock().unwrap();
+        mem::take(&mut *block_context)
     }
 }

@@ -3,7 +3,14 @@ use std::{
     sync::LazyLock,
 };
 
-use crate::{error::InterpreterError, lexer::line::Line};
+use crate::{
+    error::InterpreterError,
+    eval::ast::Block,
+    lexer::{
+        indent::{CmpIndent, Indent, IndentStack},
+        line::Line,
+    },
+};
 
 pub static KEYWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
@@ -229,6 +236,7 @@ pub enum TokenKind {
     Separator(Separator),
     Number(String),
     String(String),
+    Block(Block),
     Unknown(String),
 }
 
@@ -277,6 +285,10 @@ impl TokenKind {
 
     pub fn new_string(name: String) -> Self {
         Self::String(name)
+    }
+
+    pub fn new_block(block: Block) -> Self {
+        Self::Block(block)
     }
 
     pub fn new_unknown(name: String) -> Self {
@@ -352,7 +364,7 @@ fn tokenize_string_literal(
     idx += 1;
     loop {
         if idx >= chars.len() {
-            return Err(InterpreterError::new(String::from(
+            return Err(InterpreterError::new_lexical_error(String::from(
                 "Unexpected end of string literal",
             )));
         }
@@ -360,7 +372,7 @@ fn tokenize_string_literal(
         if chars[idx] == '\\' {
             idx += 1;
             if idx >= chars.len() {
-                return Err(InterpreterError::new(String::from(
+                return Err(InterpreterError::new_lexical_error(String::from(
                     "Unexpected end of string literal",
                 )));
             }
@@ -368,7 +380,7 @@ fn tokenize_string_literal(
             match get_escape_char(chars[idx]) {
                 Some(esc) => string.push(esc),
                 None => {
-                    return Err(InterpreterError::new(format!(
+                    return Err(InterpreterError::new_lexical_error(format!(
                         "Invalid escape character '\\{}'",
                         chars[idx]
                     )));
@@ -387,7 +399,31 @@ fn tokenize_string_literal(
     Ok(idx)
 }
 
-pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
+/// Err(InterpreterError::UnfinishedBlock) if the line's indent is greater than the base indent,
+/// meaning that the line is part of a block that has not been finished yet.
+pub fn tokenize(line: Line, indent_base: &[Indent]) -> Result<Vec<Token>, InterpreterError> {
+    let line_indent = IndentStack::from(line.indent);
+    match line_indent.cmp_level(indent_base)? {
+        CmpIndent::Less(_) => {
+            // This is a dedent, so we should not tokenize this line. The caller should handle the
+            // dedent.
+            return Err(InterpreterError::new_lexical_error(String::from(
+                "Unexpected dedent in line",
+            )));
+        }
+        CmpIndent::Greater(_) => {
+            // This is an indent, so we should not tokenize this line. The caller should handle the
+            // indent.
+            return Err(InterpreterError::new_unfinished_block(Line::new(
+                line_indent.into_inner(),
+                line.content,
+            )));
+        }
+        CmpIndent::Equal => {
+            // This is a line with the same indent level, so we can tokenize it.
+        }
+    }
+
     let chars: Vec<_> = line.content.chars().collect();
     let mut idx = 0;
     let mut tokens = Vec::new();
@@ -437,7 +473,7 @@ pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
                 } else if idx < chars.len() && (chars[idx].is_alphabetic() || chars[idx] == '_') {
                     // 1.a INVALID
                     // 1.() OK, but we will tokenize it as 1. and () separately
-                    return Err(InterpreterError::new(String::from(
+                    return Err(InterpreterError::new_lexical_error(String::from(
                         "Invalid float literal: expected digit after '.'",
                     )));
                 } else {
@@ -584,7 +620,7 @@ pub fn tokenize(line: Line) -> Result<Vec<Token>, InterpreterError> {
 
         // error
         // TODO: better error message with line and column info
-        return Err(InterpreterError::new(format!(
+        return Err(InterpreterError::new_lexical_error(format!(
             "Unexpected character '{}'",
             chars[idx]
         )));
@@ -603,8 +639,8 @@ mod tests {
             Vec::new(),
             String::from(
                 r"
-                    += -= *= **= /= //= %= &= |= ^= <<= >>= @= := & |
-                    ^ ~ << >> <= >= < > == != = + - ** * // / % . @
++= -= *= **= /= //= %= &= |= ^= <<= >>= @= := & |
+^ ~ << >> <= >= < > == != = + - ** * // / % . @
                 ",
             ),
         );
@@ -648,7 +684,7 @@ mod tests {
             TokenKind::new_operator(Operator::MatMul),
         ];
 
-        let result = tokenize(line).unwrap();
+        let result = tokenize(line, &[]).unwrap();
         for (res, exp) in result.iter().zip(expected.iter()) {
             assert_eq!(res.value.discriminant(), exp.discriminant());
             match (&res.value, exp) {

@@ -2,7 +2,7 @@ use std::num::NonZero;
 
 use crate::error::InterpreterError;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Indent {
     Tab(NonZero<usize>),
     Space(NonZero<usize>),
@@ -26,9 +26,25 @@ impl Default for IndentStack {
     }
 }
 
+impl From<Vec<Indent>> for IndentStack {
+    fn from(indents: Vec<Indent>) -> Self {
+        Self { stack: indents }
+    }
+}
+
+impl From<IndentStack> for Vec<Indent> {
+    fn from(indent_stack: IndentStack) -> Self {
+        indent_stack.into_inner()
+    }
+}
+
 impl IndentStack {
     pub fn new() -> Self {
         Self { stack: Vec::new() }
+    }
+
+    pub fn into_inner(self) -> Vec<Indent> {
+        self.stack
     }
 
     pub fn push(&mut self, indent: Indent) {
@@ -81,7 +97,7 @@ impl IndentStack {
                     }
                 }
                 _ => {
-                    return Err(InterpreterError::new(String::from(
+                    return Err(InterpreterError::new_lexical_error(String::from(
                         "Inconsistent indentation: mixing tabs and spaces is not allowed",
                     )));
                 }
@@ -131,7 +147,7 @@ impl IndentStack {
                     }
                 }
                 _ => {
-                    return Err(InterpreterError::new(String::from(
+                    return Err(InterpreterError::new_lexical_error(String::from(
                         "Inconsistent indentation: mixing tabs and spaces is not allowed",
                     )));
                 }
@@ -165,7 +181,7 @@ impl IndentStack {
                     if *found == expect {
                         Ok(CmpIndent::Greater(checker.into_iter().rev().collect()))
                     } else {
-                        Err(InterpreterError::new(format!(
+                        Err(InterpreterError::new_lexical_error(format!(
                             "Inconsistent indentation: expected tabs of {}, got {}",
                             expect.get(),
                             found.get()
@@ -176,7 +192,7 @@ impl IndentStack {
                     if *found == expect {
                         Ok(CmpIndent::Greater(checker.into_iter().rev().collect()))
                     } else {
-                        Err(InterpreterError::new(format!(
+                        Err(InterpreterError::new_lexical_error(format!(
                             "Inconsistent indentation: expected spaces of {}, got {}",
                             expect.get(),
                             found.get()
@@ -190,12 +206,12 @@ impl IndentStack {
             for indent in &given_indents {
                 match indent {
                     Indent::Tab(_) if is_space => {
-                        return Err(InterpreterError::new(String::from(
+                        return Err(InterpreterError::new_lexical_error(String::from(
                             "Inconsistent indentation: mixing tabs and spaces is not allowed",
                         )));
                     }
                     Indent::Space(_) if !is_space => {
-                        return Err(InterpreterError::new(String::from(
+                        return Err(InterpreterError::new_lexical_error(String::from(
                             "Inconsistent indentation: mixing tabs and spaces is not allowed",
                         )));
                     }
