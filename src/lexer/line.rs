@@ -3,16 +3,21 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
-use crate::{error::InterpreterError, lexer::indent::Indent};
+use crate::{
+    error::InterpreterError,
+    lexer::indent::{Indent, OwnedLineIndent},
+};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BracketType {
     Parenthesis,
     Square,
     Curly,
 }
 
+#[derive(Debug, Clone)]
 pub struct LineContext {
-    pub indents: Vec<Indent>,
+    pub indents: OwnedLineIndent,
     pub bracket_stack: Vec<BracketType>,
     pub concatenator: LineConcatenator,
 }
@@ -26,13 +31,14 @@ impl Default for LineContext {
 impl LineContext {
     pub fn new() -> Self {
         Self {
-            indents: Vec::new(),
+            indents: OwnedLineIndent::new(),
             bracket_stack: Vec::new(),
             concatenator: LineConcatenator::new(),
         }
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct LineConcatenator {
     line: String,
 }
@@ -75,12 +81,12 @@ impl LineConcatenator {
 /// would be considered as a single line, and the content of the line would be `s = """\nvalue1\nvalue2\n"""`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
-    pub indent: Vec<Indent>,
+    pub indent: OwnedLineIndent,
     pub content: String,
 }
 
 impl Line {
-    pub fn new(indent: Vec<Indent>, content: String) -> Self {
+    pub fn new(indent: OwnedLineIndent, content: String) -> Self {
         Self { indent, content }
     }
 }
@@ -95,7 +101,7 @@ macro_rules! get_line_branch {
                     })?
                 }
                 Indent::$other(_) => {
-                    $last.indents.push(*indent);
+                    $last.indents.0.push(*indent);
                     $last_indent = Some(Indent::$current(NonZero::new(1).unwrap()));
                 }
             }
@@ -123,7 +129,7 @@ pub fn get_line(last: &Mutex<LineContext>, line: &str) -> Result<Option<Line>, I
                 }
                 _ => {
                     if let Some(indent) = last_indent {
-                        last.indents.push(indent);
+                        last.indents.0.push(indent);
                     }
                     break;
                 }
@@ -136,7 +142,7 @@ pub fn get_line(last: &Mutex<LineContext>, line: &str) -> Result<Option<Line>, I
         Some(content) => {
             let mut last = last.lock().unwrap();
             let result = Ok(Some(Line::new(last.indents.clone(), content)));
-            last.indents.clear();
+            last.indents.0.clear();
             result
         }
         None => Ok(None),

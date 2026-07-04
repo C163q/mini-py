@@ -23,3 +23,8 @@ pub fn get_name_error(interpreter: Arc<Interpreter>, message: String) -> Arc<dyn
     // NameError is not implemented yet, so we return BaseException instead
     Arc::new(base_excption::PyBaseException::new(interpreter, message))
 }
+
+pub fn get_runtime_error(interpreter: Arc<Interpreter>, message: String) -> Arc<dyn PyValue> {
+    // RuntimeError is not implemented yet, so we return BaseException instead
+    Arc::new(base_excption::PyBaseException::new(interpreter, message))
+}

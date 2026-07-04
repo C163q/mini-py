@@ -9,6 +9,7 @@ use crate::{
     var::{PyValue, manager::VarManager},
 };
 
+pub mod builtin;
 pub mod wrapper;
 
 pub type BuiltinPyFunction = Arc<

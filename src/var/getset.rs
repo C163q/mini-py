@@ -43,8 +43,8 @@ static DEFAULT_SETTER: LazyLock<Setter> = LazyLock::new(|| Arc::new(default_sett
 
 #[derive(Clone)]
 pub struct PyGetSetDef {
-    pub getter: Option<Getter>,
-    pub setter: Option<Setter>,
+    getter: Option<Getter>,
+    setter: Option<Setter>,
 }
 
 impl Default for PyGetSetDef {

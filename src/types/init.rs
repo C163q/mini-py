@@ -69,6 +69,12 @@ pub fn register_types(interpreter: Arc<Interpreter>) {
     float::init_type(interpreter.clone());
 }
 
+pub fn register_functions(interpreter: Arc<Interpreter>) -> Result<(), Arc<dyn PyValue>> {
+    function::builtin::register_print(interpreter.clone())?;
+
+    Ok(())
+}
+
 #[macro_export]
 macro_rules! get_type {
     ($ty_name:expr) => {

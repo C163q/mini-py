@@ -6,6 +6,7 @@ use crate::lexer::line::Line;
 pub enum InterpreterError {
     UnhandledError(String),
     UnfinishedBlock(Line),
+    FinishedBlock(Line),
     LexicalError(String),
 }
 
@@ -18,6 +19,10 @@ impl InterpreterError {
         Self::UnfinishedBlock(line)
     }
 
+    pub fn new_finished_block(line: Line) -> Self {
+        Self::FinishedBlock(line)
+    }
+
     pub fn new_lexical_error(message: String) -> Self {
         Self::LexicalError(message)
     }
@@ -27,6 +32,7 @@ impl InterpreterError {
             Self::UnhandledError(msg) => msg,
             Self::LexicalError(msg) => msg,
             Self::UnfinishedBlock(_) => "Unfinished block detected.",
+            Self::FinishedBlock(_) => "Finished block detected. Try again.",
         }
     }
 }

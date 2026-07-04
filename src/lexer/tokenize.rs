@@ -7,7 +7,7 @@ use crate::{
     error::InterpreterError,
     eval::ast::Block,
     lexer::{
-        indent::{CmpIndent, Indent, IndentStack},
+        indent::{CmpIndent, LineIndent},
         line::Line,
     },
 };
@@ -401,21 +401,22 @@ fn tokenize_string_literal(
 
 /// Err(InterpreterError::UnfinishedBlock) if the line's indent is greater than the base indent,
 /// meaning that the line is part of a block that has not been finished yet.
-pub fn tokenize(line: Line, indent_base: &[Indent]) -> Result<Vec<Token>, InterpreterError> {
-    let line_indent = IndentStack::from(line.indent);
-    match line_indent.cmp_level(indent_base)? {
+pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, InterpreterError> {
+    let line_indent = line.indent.as_slice();
+    match line_indent.cmp_level(&indent_base)? {
         CmpIndent::Less(_) => {
             // This is a dedent, so we should not tokenize this line. The caller should handle the
             // dedent.
-            return Err(InterpreterError::new_lexical_error(String::from(
-                "Unexpected dedent in line",
+            return Err(InterpreterError::new_finished_block(Line::new(
+                line.indent,
+                line.content,
             )));
         }
         CmpIndent::Greater(_) => {
             // This is an indent, so we should not tokenize this line. The caller should handle the
             // indent.
             return Err(InterpreterError::new_unfinished_block(Line::new(
-                line_indent.into_inner(),
+                line.indent,
                 line.content,
             )));
         }
@@ -632,11 +633,13 @@ pub fn tokenize(line: Line, indent_base: &[Indent]) -> Result<Vec<Token>, Interp
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
+    use crate::lexer::indent::OwnedLineIndent;
 
     #[test]
     fn test_operator_tokenize() {
         let line = Line::new(
-            Vec::new(),
+            OwnedLineIndent::new(),
             String::from(
                 r"
 += -= *= **= /= //= %= &= |= ^= <<= >>= @= := & |
@@ -684,7 +687,7 @@ mod tests {
             TokenKind::new_operator(Operator::MatMul),
         ];
 
-        let result = tokenize(line, &[]).unwrap();
+        let result = tokenize(line, LineIndent::new()).unwrap();
         for (res, exp) in result.iter().zip(expected.iter()) {
             assert_eq!(res.value.discriminant(), exp.discriminant());
             match (&res.value, exp) {

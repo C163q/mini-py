@@ -1,7 +1,6 @@
 use std::{
     collections::hash_map::Entry,
     io::{self, Write},
-    mem,
     sync::{
         Arc, Mutex,
         atomic::{self, AtomicBool},
@@ -10,7 +9,8 @@ use std::{
 
 use crate::{
     error::InterpreterError,
-    lexer::{BlockBuilder, line::LineContext},
+    eval::{SemContext, output},
+    lexer::LexContext,
     types::{PyType, tstr::PyStr},
     var::{
         PyValue,
@@ -28,8 +28,8 @@ pub mod var;
 pub struct Interpreter {
     initialized: AtomicBool,
     var_mapper: Mutex<VarManager>,
-    line_context: Mutex<LineContext>,
-    block_context: Mutex<BlockBuilder>,
+    lex_context: LexContext,
+    sem_context: Mutex<SemContext>,
     repl_output: Option<io::Stdout>,
 }
 
@@ -57,14 +57,16 @@ impl Interpreter {
         Self {
             initialized: AtomicBool::new(false),
             var_mapper: Mutex::new(VarManager::new()),
-            line_context: Mutex::new(LineContext::new()),
-            block_context: Mutex::new(BlockBuilder::new()),
+            sem_context: Mutex::new(SemContext::new()),
+            lex_context: LexContext::new(),
             repl_output: None,
         }
     }
 
     pub fn init_builtin_types(self: Arc<Self>) {
         types::init::register_types(self.clone());
+        types::init::register_functions(self.clone())
+            .expect("Failed to register built-in functions");
         AtomicBool::store(&self.initialized, true, atomic::Ordering::SeqCst);
     }
 
@@ -90,6 +92,10 @@ impl Interpreter {
         if self.repl_output.is_none() {
             self.repl_output = Some(io::stdout());
         }
+    }
+
+    pub fn get_lex_context(&self) -> &LexContext {
+        &self.lex_context
     }
 
     pub fn get_type(self: Arc<Self>, name: &str) -> Result<Arc<PyType>, Arc<dyn PyValue>> {
@@ -176,49 +182,28 @@ impl Interpreter {
         let output = match output {
             Ok(value) => value,
             Err(err) => {
-                let str_func = match err.get_var(self.clone(), "__str__") {
-                    Ok(func) => func,
-                    Err(_) => {
-                        // Handle the case where the error does not have a __str__ method
-                        return Err(InterpreterError::new_unhandled(format!(
-                            "Error does not have __str__ method: {}",
-                            err.get_type().get_name()
-                        )));
-                    }
-                };
-                let err_msg = match var::call::call(str_func, self.clone(), vec![err.clone()]) {
-                    Ok(msg) => match msg.as_any().downcast_ref::<PyStr>() {
-                        Some(py_str) => py_str.to_string(),
-                        None => {
-                            // Handle the case where __str__ does not return a string
-                            return Err(InterpreterError::new_unhandled(format!(
-                                "__str__ did not return a string for error: {}",
-                                err.get_type().get_name()
-                            )));
-                        }
-                    },
-                    Err(err) => {
-                        // Handle the case where calling __str__ on the error fails
-                        return Err(InterpreterError::new_unhandled(format!(
-                            "Failed to call __str__ on error: {}",
-                            err.get_type().get_name()
-                        )));
-                    }
-                };
-                eprintln!("{}", err_msg);
-                return Ok(());
+                let err_msg = output::output_err_value(self.clone(), err)?;
+                return Err(InterpreterError::new_unhandled(format!(
+                    "Error evaluating line: {}",
+                    err_msg
+                )));
             }
         };
-        if let Some(output) = output
-            && let Some(repl_output) = &self.repl_output
-        {
-            writeln!(repl_output.lock(), "{}", output).ok();
+        if let Some(output) = output {
+            let _ = self.output_pystr_if_repl(output);
         }
         Ok(())
     }
 
-    pub fn get_and_clear_block_context(self: Arc<Self>) -> BlockBuilder {
-        let mut block_context = self.block_context.lock().unwrap();
-        mem::take(&mut *block_context)
+    pub fn output_pystr_if_repl(self: Arc<Self>, value: PyStr) -> Result<(), Arc<dyn PyValue>> {
+        if let Some(repl_output) = &self.repl_output {
+            writeln!(repl_output.lock(), "{}", value).map_err(|e| {
+                types::error::get_runtime_error(
+                    self.clone(),
+                    format!("Error outputting result: {}", e),
+                )
+            })?;
+        }
+        Ok(())
     }
 }

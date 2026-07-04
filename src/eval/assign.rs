@@ -2,12 +2,21 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    eval::{ParseResult, ast::Assign},
+    eval::{Eval, ParseResult, ast::Assign},
     lexer::tokenize::{Operator, Token, TokenKind},
     var::PyValue,
 };
 
 use super::expr::parse_lvalue;
+
+impl Eval for Assign {
+    fn eval(
+        self: Box<Self>,
+        interpreter: Arc<Interpreter>,
+    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+        eval_assign(interpreter, *self).map(|_| None)
+    }
+}
 
 pub fn parse_assign(
     interpreter: Arc<Interpreter>,

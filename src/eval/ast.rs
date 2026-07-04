@@ -4,24 +4,47 @@ use num_bigint::BigInt;
 
 use crate::{
     Interpreter,
-    lexer::{indent::Indent, line::Line},
+    lexer::{
+        indent::{LineIndent, OwnedLineIndent},
+        line::Line,
+    },
     types::{float::PyFloat, int::PyInt},
 };
 
+#[derive(Debug, Clone)]
+pub struct IfStmt {
+    pub condition: Expr,
+    /// None if the body is not yet parsed
+    pub body: Option<Block>,
+}
+
+impl IfStmt {
+    pub fn new(condition: Expr) -> Self {
+        Self {
+            condition,
+            body: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
-    pub base_indent: Vec<Indent>,
+    pub base_indent: OwnedLineIndent,
     pub lines: Vec<Line>,
 }
 
 impl Block {
-    pub fn new(base_indent: Vec<Indent>, lines: Vec<Line>) -> Self {
+    pub fn new(base_indent: OwnedLineIndent, lines: Vec<Line>) -> Self {
         assert!(!lines.is_empty(), "Block must have at least one line");
         assert!(
             lines[0].indent == base_indent,
             "First line of block must have the same indent as the block"
         );
         Self { base_indent, lines }
+    }
+
+    pub fn get_indent(&self) -> LineIndent<'_> {
+        self.base_indent.as_slice()
     }
 }
 
