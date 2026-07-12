@@ -73,6 +73,9 @@ impl Interpreter {
     /// ## Examples
     ///
     /// ```
+    /// use std::sync::Arc;
+    /// use minipy::Interpreter;
+    ///
     /// let mut interpreter = Interpreter::build();
     /// interpreter.open_repl_output();
     /// let interpreter = Arc::new(interpreter);
