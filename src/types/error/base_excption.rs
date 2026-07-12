@@ -27,7 +27,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     );
 }
 
-/// BaseException Value
+/// The base exception type, backing all error variants until dedicated types are implemented.
 #[derive(Debug)]
 pub struct PyBaseException {
     message: String,

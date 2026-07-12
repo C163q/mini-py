@@ -7,6 +7,10 @@ use crate::{
     var::PyValue,
 };
 
+/// Evaluates every line in `block` in order, using the block's own indentation as the base.
+///
+/// In REPL mode, any line that produces output is printed immediately via
+/// [`Interpreter::output_pystr_if_repl`].
 pub fn eval_block(interpreter: Arc<Interpreter>, block: Block) -> Result<(), Arc<dyn PyValue>> {
     let indent = block.base_indent.as_slice();
     for line in block.lines {

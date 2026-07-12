@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+/// Set of all Python keywords, used during tokenization to distinguish identifiers from keywords.
 pub static KEYWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
         "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
@@ -21,6 +22,7 @@ pub static KEYWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     ])
 });
 
+/// Maps operator strings to their [`Operator`] variants, used for tokenizing operator tokens.
 pub static STR_OPERATOR_MAPPER: LazyLock<HashMap<&'static str, Operator>> = LazyLock::new(|| {
     HashMap::from([
         ("+=", Operator::AddAssign),
@@ -62,6 +64,7 @@ pub static STR_OPERATOR_MAPPER: LazyLock<HashMap<&'static str, Operator>> = Lazy
     ])
 });
 
+/// Maps keyword strings to their [`Keyword`] variants.
 pub static STR_KEYWORD_MAPPER: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
     HashMap::from([
         ("False", Keyword::False),
@@ -102,6 +105,7 @@ pub static STR_KEYWORD_MAPPER: LazyLock<HashMap<&'static str, Keyword>> = LazyLo
     ])
 });
 
+/// Maps separator strings to their [`Separator`] variants.
 pub static STR_SEPARATOR_MAPPER: LazyLock<HashMap<&'static str, Separator>> = LazyLock::new(|| {
     HashMap::from([
         ("(", Separator::LeftParen),
@@ -118,6 +122,7 @@ pub static STR_SEPARATOR_MAPPER: LazyLock<HashMap<&'static str, Separator>> = La
     ])
 });
 
+/// All Python keywords recognized by the lexer.
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Keyword {
@@ -158,6 +163,7 @@ pub enum Keyword {
     Yield,
 }
 
+/// All operators recognized by the lexer.
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Operator {
@@ -199,6 +205,7 @@ pub enum Operator {
     MatMul,
 }
 
+/// Punctuation and delimiters that separate syntactic elements.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Separator {
     LeftParen,    // (
@@ -214,21 +221,27 @@ pub enum Separator {
     Arrow,        // ->
 }
 
+/// A lexed token together with reserved space for future source location info.
+///
+/// The actual token value is in [`TokenNode::value`]. Once source location tracking is
+/// implemented, `info` will carry line and column data.
 #[derive(Debug, Clone)]
-pub struct Token {
-    pub info: (), // TODO
-    pub value: TokenKind,
+pub struct TokenNode {
+    pub info: (), // TODO: source location (line, column)
+    pub value: Token,
 }
 
-impl Token {
-    pub fn new(value: TokenKind) -> Self {
+impl TokenNode {
+    pub fn new(value: Token) -> Self {
         Self { info: (), value }
     }
 }
 
+/// A lexed token, carrying its variant and any associated payload (e.g. identifier name, number
+/// literal). Wrapped in [`TokenNode`] when source location info is needed.
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum TokenKind {
+pub enum Token {
     None,
     Identifier(String),
     Keyword(Keyword),
@@ -240,7 +253,7 @@ pub enum TokenKind {
     Unknown(String),
 }
 
-impl TokenKind {
+impl Token {
     pub fn new_none() -> Self {
         Self::None
     }
@@ -399,9 +412,16 @@ fn tokenize_string_literal(
     Ok(idx)
 }
 
-/// Err(InterpreterError::UnfinishedBlock) if the line's indent is greater than the base indent,
-/// meaning that the line is part of a block that has not been finished yet.
-pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, InterpreterError> {
+/// Tokenizes a [`Line`] into a [`Vec<Token>`], given the current scope's `indent_base`.
+///
+/// ## Errors
+///
+/// - `Err(InterpreterError::UnfinishedBlock)` — the line is indented *beyond* `indent_base`,
+///   meaning it belongs to a nested block that has not been closed yet.
+/// - `Err(InterpreterError::FinishedBlock)` — the line is indented *less* than `indent_base`,
+///   meaning the current block has ended; the caller must handle the dedent.
+/// - Other `Err` variants on lexical errors (invalid characters, unterminated strings, etc.).
+pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<TokenNode>, InterpreterError> {
     let line_indent = line.indent.as_slice();
     match line_indent.cmp_level(&indent_base)? {
         CmpIndent::Less(_) => {
@@ -450,10 +470,10 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
             idx += 1;
             idx = tokenize_identifier_following(idx, &chars, &mut ident);
             if KEYWORDS.contains(ident.as_str()) {
-                tokens.push(Token::new(TokenKind::new_keyword_from_str(&ident).unwrap()));
+                tokens.push(TokenNode::new(Token::new_keyword_from_str(&ident).unwrap()));
                 continue;
             }
-            tokens.push(Token::new(TokenKind::new_identifier(ident)));
+            tokens.push(TokenNode::new(Token::new_identifier(ident)));
             continue;
         }
 
@@ -483,7 +503,7 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
                 }
             }
 
-            tokens.push(Token::new(TokenKind::new_number(number)));
+            tokens.push(TokenNode::new(Token::new_number(number)));
             continue;
         }
 
@@ -491,7 +511,7 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
         if chars[idx] == '\'' || chars[idx] == '"' {
             let mut string = String::new();
             idx = tokenize_string_literal(idx, &chars, &mut string)?;
-            tokens.push(Token::new(TokenKind::new_string(string)));
+            tokens.push(TokenNode::new(Token::new_string(string)));
             continue;
         }
 
@@ -499,8 +519,8 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
         match chars[idx] {
             // <op>
             '~' => {
-                tokens.push(Token::new(
-                    TokenKind::new_operator_from_str(&chars[idx].to_string()).unwrap(),
+                tokens.push(TokenNode::new(
+                    Token::new_operator_from_str(&chars[idx].to_string()).unwrap(),
                 ));
                 idx += 1;
                 continue;
@@ -513,11 +533,11 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
                     // Number starting with dot, e.g. .1
                     let (i, number) = tokenize_number(idx, &chars);
                     idx = i;
-                    tokens.push(Token::new(TokenKind::new_number(format!("0.{}", number))));
+                    tokens.push(TokenNode::new(Token::new_number(format!("0.{}", number))));
                 } else {
                     // Dot operator
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&chars[idx - 1].to_string()).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&chars[idx - 1].to_string()).unwrap(),
                     ));
                 }
 
@@ -528,13 +548,13 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
                 let first = chars[idx];
                 idx += 1;
                 if idx < chars.len() && chars[idx] == '=' {
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&format!("{}=", first)).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&format!("{}=", first)).unwrap(),
                     ));
                     idx += 1;
                 } else {
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&first.to_string()).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&first.to_string()).unwrap(),
                     ));
                 }
                 continue;
@@ -546,25 +566,23 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
                 if idx < chars.len() && chars[idx] == first {
                     idx += 1;
                     if idx < chars.len() && chars[idx] == '=' {
-                        tokens.push(Token::new(
-                            TokenKind::new_operator_from_str(&format!("{}{}=", first, first))
-                                .unwrap(),
+                        tokens.push(TokenNode::new(
+                            Token::new_operator_from_str(&format!("{}{}=", first, first)).unwrap(),
                         ));
                         idx += 1;
                     } else {
-                        tokens.push(Token::new(
-                            TokenKind::new_operator_from_str(&format!("{}{}", first, first))
-                                .unwrap(),
+                        tokens.push(TokenNode::new(
+                            Token::new_operator_from_str(&format!("{}{}", first, first)).unwrap(),
                         ));
                     }
                 } else if idx < chars.len() && chars[idx] == '=' {
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&format!("{}=", first)).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&format!("{}=", first)).unwrap(),
                     ));
                     idx += 1;
                 } else {
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&first.to_string()).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&first.to_string()).unwrap(),
                     ));
                 }
                 continue;
@@ -574,16 +592,16 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
                 let first = chars[idx];
                 idx += 1;
                 if idx < chars.len() && chars[idx] == '=' {
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&format!("{}=", first)).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&format!("{}=", first)).unwrap(),
                     ));
                     idx += 1;
                     continue;
                 } else if idx < chars.len() && chars[idx] == '>' {
                     idx -= 1;
                 } else {
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&first.to_string()).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&first.to_string()).unwrap(),
                     ));
                     continue;
                 }
@@ -592,8 +610,8 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
             '!' | ':' => {
                 let first = chars[idx];
                 if idx + 1 < chars.len() && chars[idx + 1] == '=' {
-                    tokens.push(Token::new(
-                        TokenKind::new_operator_from_str(&format!("{}=", first)).unwrap(),
+                    tokens.push(TokenNode::new(
+                        Token::new_operator_from_str(&format!("{}=", first)).unwrap(),
                     ));
                     idx += 2;
                     continue;
@@ -605,14 +623,14 @@ pub fn tokenize(line: Line, indent_base: LineIndent) -> Result<Vec<Token>, Inter
         // Separator
         match chars[idx] {
             '(' | ')' | '[' | ']' | '{' | '}' | ',' | ':' | ';' | '!' => {
-                tokens.push(Token::new(
-                    TokenKind::new_separator_from_str(&chars[idx].to_string()).unwrap(),
+                tokens.push(TokenNode::new(
+                    Token::new_separator_from_str(&chars[idx].to_string()).unwrap(),
                 ));
                 idx += 1;
                 continue;
             }
             '-' if idx + 1 < chars.len() && chars[idx + 1] == '>' => {
-                tokens.push(Token::new(TokenKind::new_separator_from_str("->").unwrap()));
+                tokens.push(TokenNode::new(Token::new_separator_from_str("->").unwrap()));
                 idx += 2;
                 continue;
             }
@@ -649,49 +667,49 @@ mod tests {
         );
 
         let expected = vec![
-            TokenKind::new_operator(Operator::AddAssign),
-            TokenKind::new_operator(Operator::SubAssign),
-            TokenKind::new_operator(Operator::MulAssign),
-            TokenKind::new_operator(Operator::PowAssign),
-            TokenKind::new_operator(Operator::TrueDivAssign),
-            TokenKind::new_operator(Operator::FloorDivAssign),
-            TokenKind::new_operator(Operator::ModAssign),
-            TokenKind::new_operator(Operator::AndAssign),
-            TokenKind::new_operator(Operator::OrAssign),
-            TokenKind::new_operator(Operator::XorAssign),
-            TokenKind::new_operator(Operator::LShiftAssign),
-            TokenKind::new_operator(Operator::RShiftAssign),
-            TokenKind::new_operator(Operator::MatMulAssign),
-            TokenKind::new_operator(Operator::ColonAssign),
-            TokenKind::new_operator(Operator::And),
-            TokenKind::new_operator(Operator::Or),
-            TokenKind::new_operator(Operator::Xor),
-            TokenKind::new_operator(Operator::Not),
-            TokenKind::new_operator(Operator::LShift),
-            TokenKind::new_operator(Operator::RShift),
-            TokenKind::new_operator(Operator::LessEqual),
-            TokenKind::new_operator(Operator::GreaterEqual),
-            TokenKind::new_operator(Operator::Less),
-            TokenKind::new_operator(Operator::Greater),
-            TokenKind::new_operator(Operator::Equal),
-            TokenKind::new_operator(Operator::NotEqual),
-            TokenKind::new_operator(Operator::Assign),
-            TokenKind::new_operator(Operator::Add),
-            TokenKind::new_operator(Operator::Sub),
-            TokenKind::new_operator(Operator::Pow),
-            TokenKind::new_operator(Operator::Mul),
-            TokenKind::new_operator(Operator::FloorDiv),
-            TokenKind::new_operator(Operator::TrueDiv),
-            TokenKind::new_operator(Operator::Mod),
-            TokenKind::new_operator(Operator::Dot),
-            TokenKind::new_operator(Operator::MatMul),
+            Token::new_operator(Operator::AddAssign),
+            Token::new_operator(Operator::SubAssign),
+            Token::new_operator(Operator::MulAssign),
+            Token::new_operator(Operator::PowAssign),
+            Token::new_operator(Operator::TrueDivAssign),
+            Token::new_operator(Operator::FloorDivAssign),
+            Token::new_operator(Operator::ModAssign),
+            Token::new_operator(Operator::AndAssign),
+            Token::new_operator(Operator::OrAssign),
+            Token::new_operator(Operator::XorAssign),
+            Token::new_operator(Operator::LShiftAssign),
+            Token::new_operator(Operator::RShiftAssign),
+            Token::new_operator(Operator::MatMulAssign),
+            Token::new_operator(Operator::ColonAssign),
+            Token::new_operator(Operator::And),
+            Token::new_operator(Operator::Or),
+            Token::new_operator(Operator::Xor),
+            Token::new_operator(Operator::Not),
+            Token::new_operator(Operator::LShift),
+            Token::new_operator(Operator::RShift),
+            Token::new_operator(Operator::LessEqual),
+            Token::new_operator(Operator::GreaterEqual),
+            Token::new_operator(Operator::Less),
+            Token::new_operator(Operator::Greater),
+            Token::new_operator(Operator::Equal),
+            Token::new_operator(Operator::NotEqual),
+            Token::new_operator(Operator::Assign),
+            Token::new_operator(Operator::Add),
+            Token::new_operator(Operator::Sub),
+            Token::new_operator(Operator::Pow),
+            Token::new_operator(Operator::Mul),
+            Token::new_operator(Operator::FloorDiv),
+            Token::new_operator(Operator::TrueDiv),
+            Token::new_operator(Operator::Mod),
+            Token::new_operator(Operator::Dot),
+            Token::new_operator(Operator::MatMul),
         ];
 
         let result = tokenize(line, LineIndent::new()).unwrap();
         for (res, exp) in result.iter().zip(expected.iter()) {
             assert_eq!(res.value.discriminant(), exp.discriminant());
             match (&res.value, exp) {
-                (TokenKind::Operator(res_op), TokenKind::Operator(exp_op)) => {
+                (Token::Operator(res_op), Token::Operator(exp_op)) => {
                     assert_eq!(res_op, exp_op);
                 }
                 _ => unreachable!(),

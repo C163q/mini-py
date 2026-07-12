@@ -8,6 +8,7 @@ use crate::{
     lexer::indent::{Indent, OwnedLineIndent},
 };
 
+/// The type of an open bracket being tracked for implicit line continuation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BracketType {
     Parenthesis,
@@ -15,10 +16,16 @@ pub enum BracketType {
     Curly,
 }
 
+/// Mutable state carried across successive raw input chunks while assembling a logical [`Line`].
 #[derive(Debug, Clone)]
 pub struct LineContext {
-    pub indents: OwnedLineIndent,
+    /// The leading indentation accumulated for the line currently being built.
+    /// [`None`] means this is the first line of a logical line, and the indentation has not been
+    /// determined yet.
+    pub indents: Option<OwnedLineIndent>,
+    /// Open brackets seen so far; a non-empty stack means line continuation is still in progress.
     pub bracket_stack: Vec<BracketType>,
+    /// Buffers partial content until the logical line is complete.
     pub concatenator: LineConcatenator,
 }
 
@@ -31,13 +38,16 @@ impl Default for LineContext {
 impl LineContext {
     pub fn new() -> Self {
         Self {
-            indents: OwnedLineIndent::new(),
+            indents: None,
             bracket_stack: Vec::new(),
             concatenator: LineConcatenator::new(),
         }
     }
 }
 
+/// Buffers partial line content across multiple input chunks until a logical line is complete.
+///
+/// Chunks are joined with a single space to preserve token boundaries across physical newlines.
 #[derive(Debug, Clone)]
 pub struct LineConcatenator {
     line: String,
@@ -50,35 +60,41 @@ impl Default for LineConcatenator {
 }
 
 impl LineConcatenator {
+    /// Creates an empty `LineConcatenator`.
     pub fn new() -> Self {
         Self {
             line: String::new(),
         }
     }
 
+    /// Discards all buffered content.
     pub fn clear(&mut self) {
         self.line.clear();
     }
 
+    /// Appends `chunk` to the buffer.
     pub fn append(&mut self, command: &str) {
         self.line.push_str(command);
     }
 
+    /// Returns the accumulated content so far.
     pub fn get(&self) -> &str {
         &self.line
     }
 }
 
-/// Line here does NOT mean that there is no '\n', for example:
+/// A single logical line together with its leading indentation.
 ///
-/// ```python
-/// s = """
-/// value1
-/// value2
-/// """
+/// A "logical line" may span multiple physical lines: implicit continuation inside open
+/// brackets and explicit continuation with a trailing `\` are both merged into one `Line`.
+/// For example:
+///
+/// ```text
+/// x = (1 +
+///      2)
 /// ```
 ///
-/// would be considered as a single line, and the content of the line would be `s = """\nvalue1\nvalue2\n"""`.
+/// produces a single `Line` whose `content` is `"x = (1 + 2)"`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     pub indent: OwnedLineIndent,
@@ -86,13 +102,14 @@ pub struct Line {
 }
 
 impl Line {
+    /// Creates a `Line` from a pre-parsed indentation sequence and content string.
     pub fn new(indent: OwnedLineIndent, content: String) -> Self {
         Self { indent, content }
     }
 }
 
 macro_rules! get_line_branch {
-    ($current:tt, $other:tt, $last_indent:ident, $last:tt) => {
+    ($current:tt, $other:tt, $last_indent:ident, $indents:ident) => {
         if let Some(indent) = $last_indent.as_mut() {
             match indent {
                 Indent::$current(count) => {
@@ -101,7 +118,7 @@ macro_rules! get_line_branch {
                     })?
                 }
                 Indent::$other(_) => {
-                    $last.indents.0.push(*indent);
+                    $indents.0.push(*indent);
                     $last_indent = Some(Indent::$current(NonZero::new(1).unwrap()));
                 }
             }
@@ -111,39 +128,48 @@ macro_rules! get_line_branch {
     };
 }
 
+/// Attempts to assemble a complete [`Line`] from a raw input string, updating `last` in place.
+///
+/// Returns `Ok(Some(Line))` when a logical line is complete, `Ok(None)` if more input is
+/// needed (open brackets or trailing `\`), or an error on malformed input.
 pub fn get_line(last: &Mutex<LineContext>, line: &str) -> Result<Option<Line>, InterpreterError> {
     if last.lock().unwrap().concatenator.get().is_empty() {
         let line = line.trim_end();
         if line.is_empty() {
             return Ok(None);
         }
-        let mut last_indent: Option<Indent> = None;
-        for ch in line.chars() {
-            let mut last = last.lock().unwrap();
-            match ch {
-                ' ' => {
-                    get_line_branch!(Space, Tab, last_indent, last);
-                }
-                '\t' => {
-                    get_line_branch!(Tab, Space, last_indent, last);
-                }
-                _ => {
-                    if let Some(indent) = last_indent {
-                        last.indents.0.push(indent);
+
+        // None means this is the first line of a logical line, so we need to parse the indentation.
+        if last.lock().unwrap().indents.is_none() {
+            let mut last_indent: Option<Indent> = None;
+            let mut indents = OwnedLineIndent::new();
+            for ch in line.chars() {
+                match ch {
+                    ' ' => {
+                        get_line_branch!(Space, Tab, last_indent, indents);
                     }
-                    break;
+                    '\t' => {
+                        get_line_branch!(Tab, Space, last_indent, indents);
+                    }
+                    _ => {
+                        if let Some(indent) = last_indent {
+                            indents.0.push(indent);
+                        }
+                        break;
+                    }
                 }
             }
+            last.lock().unwrap().indents = Some(indents);
         }
     }
 
+    // handle the multiline line continuation and bracket matching
     let line_content = get_line_content(last.lock().unwrap(), line)?;
+
     match line_content {
         Some(content) => {
             let mut last = last.lock().unwrap();
-            let result = Ok(Some(Line::new(last.indents.clone(), content)));
-            last.indents.0.clear();
-            result
+            Ok(Some(Line::new(last.indents.take().unwrap(), content)))
         }
         None => Ok(None),
     }
@@ -159,6 +185,7 @@ fn get_line_content(
         return Ok(None);
     }
 
+    // handle bracket matching
     for ch in line.chars() {
         match ch {
             '(' => last.bracket_stack.push(BracketType::Parenthesis),
@@ -198,15 +225,19 @@ fn get_line_content(
         }
     }
 
+    // handle line continuation
+    // end with backslash, wait for next line
     if line.ends_with('\\') {
         push_space_if_needed(&mut last.concatenator);
         last.concatenator.append(line.strip_suffix('\\').unwrap());
         Ok(None)
     } else if !last.bracket_stack.is_empty() {
+        // open brackets
         push_space_if_needed(&mut last.concatenator);
         last.concatenator.append(line);
         Ok(None)
     } else {
+        // finish a complete logical line, return it
         let mut result = last.concatenator.get().to_string();
         if !result.is_empty() {
             result.push(' ');

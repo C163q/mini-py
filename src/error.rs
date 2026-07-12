@@ -2,8 +2,15 @@ use std::{error::Error, fmt::Display};
 
 use crate::lexer::line::Line;
 
+/// The error type for the interpreter.
+///
+/// ## Arc<PyValue> vs InterpreterError
+///
+/// Arc<PyValue> is treated as a Exception in Python, while InterpreterError is treated as an
+/// internal error in the interpreter.
 #[derive(Debug, Clone)]
 pub enum InterpreterError {
+    /// Represents unrecoverable errors or errors that haven't implement a way to handle.
     UnhandledError(String),
     UnfinishedBlock(Line),
     FinishedBlock(Line),

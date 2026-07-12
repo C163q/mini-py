@@ -1,3 +1,7 @@
+//! Expression evaluation — one `eval_*` function per AST node in the precedence hierarchy.
+//! Each function dispatches on its enum variant, delegates to the next level down for the
+//! pass-through case, and calls the appropriate dunder method for the operator case.
+
 use std::sync::Arc;
 
 use crate::{

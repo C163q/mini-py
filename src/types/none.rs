@@ -27,7 +27,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     );
 }
 
-/// None Value
+/// The Python `None` singleton value.
 #[derive(Debug)]
 pub struct PyNone {
     ty: Arc<PyType>,

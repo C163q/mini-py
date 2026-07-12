@@ -7,6 +7,10 @@ use crate::{
     var::PyValue,
 };
 
+/// Converts `value` to a [`PyStr`] for display by calling `__repr__`, falling back to `__str__`.
+///
+/// Returns `Err(TypeError)` if neither method is available or if either method does not return
+/// a string.
 pub fn output_value(
     interpreter: Arc<Interpreter>,
     value: Arc<dyn PyValue>,
@@ -39,6 +43,8 @@ pub fn output_value(
     }
 }
 
+/// Like [`output_value`], but converts errors into [`InterpreterError`] instead of a Python
+/// exception — used when formatting an [`PyValue`] that is not allowed to raise an exception.
 pub fn output_err_value(
     interpreter: Arc<Interpreter>,
     value: Arc<dyn PyValue>,

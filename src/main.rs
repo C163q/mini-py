@@ -57,3 +57,14 @@ fn main() -> io::Result<()> {
         }
     }
 }
+
+// Known issues:
+// mini-py> a = 1
+// mini-py> if a:
+// mini-py>   b=2
+// mini-py>   if b == 2:
+// mini-py>     a+b
+// mini-py>
+// mini-py> a=3
+// Unhandled error: Error evaluating line: Unexpected indent.
+// Error: Custom { kind: Other, error: "Unhandled error occurred" }

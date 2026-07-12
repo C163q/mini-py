@@ -6,19 +6,34 @@ use std::{
 
 use crate::{error::InterpreterError, eval::SetBlock};
 
+/// A single indentation unit: consecutive tabs or spaces, stored as a non-zero count.
+///
+/// Mixed tabs and spaces within a single indentation level are tracked as separate `Indent`
+/// elements in a [`LineIndent`] sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Indent {
     Tab(NonZero<usize>),
     Space(NonZero<usize>),
 }
 
+/// Result of comparing two indentation levels via [`LineIndent::cmp_level`].
+///
+/// The payload of `Less` and `Greater` holds the **remainder** — the portion of the winning
+/// side that was not consumed by the common prefix. This allows callers to know exactly how
+/// much indentation was added or removed.
 #[derive(Debug, Clone)]
 pub enum CmpIndent {
+    /// Current indent is **less** than the reference — i.e., a dedent (leaving a block).
     Less(Vec<Indent>),
+    /// Current indent is exactly equal to the reference.
     Equal,
+    /// Current indent is **greater** than the reference — i.e., an indent (entering a block).
     Greater(Vec<Indent>),
 }
 
+/// A borrowed, read-only view of an indentation sequence.
+///
+/// Prefer this over [`OwnedLineIndent`] for comparisons and lookups to avoid allocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LineIndent<'a>(&'a [Indent]);
 
@@ -47,22 +62,22 @@ impl Default for LineIndent<'_> {
 }
 
 impl<'a> LineIndent<'a> {
+    /// Creates an empty (zero-indentation) `LineIndent`.
     pub fn new() -> Self {
         Self(&[])
     }
 
+    /// Copies the indentation sequence into an owned `Vec`.
     pub fn to_vec(&self) -> Vec<Indent> {
         self.0.to_vec()
     }
 
-    pub fn current_indent(&self) -> Option<&Indent> {
-        self.0.last()
-    }
-
-    pub fn level(&self) -> usize {
-        self.0.len()
-    }
-
+    /// Returns `true` if `self` and `indents` represent the same total indentation amount.
+    ///
+    /// Two sequences are considered equal even if they differ in how units are grouped — e.g.,
+    /// `[Tab(2)]` and `[Tab(1), Tab(1)]` — as long as their total amounts match.
+    ///
+    /// Returns an error if tabs and spaces are mixed in an incompatible way.
     pub fn is_same_level(&self, indents: &[Indent]) -> Result<bool, InterpreterError> {
         let mut checker: Vec<Indent> = self.0.iter().copied().rev().collect();
         let mut given_indents: Vec<Indent> = indents.iter().copied().rev().collect();
@@ -106,13 +121,12 @@ impl<'a> LineIndent<'a> {
         Ok(checker.is_empty() && given_indents.is_empty())
     }
 
-    /// Less => current indent is less than the given indent, meaning we are going deeper into the
-    /// block.
+    /// Compares `self` against `indents` and returns a [`CmpIndent`] describing the relationship.
     ///
-    /// Equal => current indent is the same as the given indent.
+    /// Like [`is_same_level`], grouping differences are normalized before comparison.
+    /// Returns an error if tabs and spaces are mixed in an incompatible way.
     ///
-    /// Greater => current indent is greater than the given indent, meaning we are going back to the
-    /// previous block.
+    /// [`is_same_level`]: LineIndent::is_same_level
     pub fn cmp_level(&self, indents: &[Indent]) -> Result<CmpIndent, InterpreterError> {
         let mut checker: Vec<Indent> = self.0.iter().copied().rev().collect();
         let mut given_indents: Vec<Indent> = indents.iter().copied().rev().collect();
@@ -163,6 +177,7 @@ impl<'a> LineIndent<'a> {
         }
     }
 
+    /// Converts this borrowed view into an [`OwnedLineIndent`] by cloning the sequence.
     pub fn to_owned(&self) -> OwnedLineIndent {
         OwnedLineIndent(self.0.to_vec())
     }
@@ -176,6 +191,7 @@ impl<'a> Deref for LineIndent<'a> {
     }
 }
 
+/// An owned indentation sequence. The heap-allocated counterpart of [`LineIndent`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnedLineIndent(pub Vec<Indent>);
 
@@ -192,10 +208,12 @@ impl From<Vec<Indent>> for OwnedLineIndent {
 }
 
 impl OwnedLineIndent {
+    /// Creates an empty `OwnedLineIndent`.
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
+    /// Returns a borrowed [`LineIndent`] view over this sequence.
     pub fn as_slice(&self) -> LineIndent<'_> {
         LineIndent(&self.0)
     }
@@ -215,6 +233,10 @@ impl DerefMut for OwnedLineIndent {
     }
 }
 
+/// A stack of strictly increasing indentation levels.
+///
+/// Each entry must be deeper than the one below it; pushing an equal or shallower level is
+/// an error. Used during tokenization to track the nesting of blocks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndentStack {
     stack: Vec<OwnedLineIndent>,
@@ -227,14 +249,18 @@ impl Default for IndentStack {
 }
 
 impl IndentStack {
+    /// Creates an empty `IndentStack`.
     pub fn new() -> Self {
         Self { stack: Vec::new() }
     }
 
+    /// Returns `true` if no indentation levels have been pushed.
     pub fn is_empty(&self) -> bool {
         self.stack.is_empty()
     }
 
+    /// Pushes a new indentation level. Returns an error if `indent` is not strictly deeper than
+    /// the current top of the stack.
     pub fn push(&mut self, indent: OwnedLineIndent) -> Result<(), InterpreterError> {
         if let Some(last) = self.stack.last() {
             match last.as_slice().cmp_level(&indent) {
@@ -256,19 +282,35 @@ impl IndentStack {
         }
     }
 
+    /// Removes and returns the top indentation level, or `None` if the stack is empty.
     pub fn pop(&mut self) -> Option<OwnedLineIndent> {
         self.stack.pop()
     }
 
+    /// Returns a borrowed view of the current (deepest) indentation level, or `None` if empty.
     pub fn current(&self) -> Option<LineIndent<'_>> {
         self.stack.last().map(|indent| indent.as_slice())
     }
 }
 
+impl Deref for IndentStack {
+    type Target = [OwnedLineIndent];
+
+    fn deref(&self) -> &Self::Target {
+        &self.stack
+    }
+}
+
+/// Tracks the indentation history of the current parsing session, along with an optional
+/// callback for when a new block opens.
 pub struct IndentHistory {
-    pub stack: Vec<OwnedLineIndent>,
-    /// Some(_) -> a new level of indentation is expected and the Block should be set
-    /// None -> the same level of indentation or a lower level of indentation is expected
+    pub stack: IndentStack,
+    /// `Some(_)` — a deeper indentation level is expected on the next line; the callback will
+    /// receive the completed [`Block`] once the block is closed.
+    ///
+    /// `None` — the next line is expected at the same or a shallower level.
+    ///
+    /// [`Block`]: crate::eval::ast::Block
     pub expected_indent: Option<Box<dyn SetBlock>>,
 }
 
@@ -297,7 +339,7 @@ impl Default for IndentHistory {
 impl IndentHistory {
     pub fn new() -> Self {
         Self {
-            stack: Vec::new(),
+            stack: IndentStack::new(),
             expected_indent: None,
         }
     }

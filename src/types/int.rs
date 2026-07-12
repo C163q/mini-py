@@ -58,7 +58,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     )
 }
 
-/// Int Value
+/// An arbitrary-precision Python integer, backed by [`BigInt`].
 #[derive(Debug)]
 pub struct PyInt {
     ty: Arc<PyType>,

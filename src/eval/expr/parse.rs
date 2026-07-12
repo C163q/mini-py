@@ -1,3 +1,7 @@
+//! Expression parsing — one `parse_*` function per AST node in the precedence hierarchy.
+//! Each function tries to match the current token position and returns `None` on mismatch,
+//! letting the caller fall through to the next lower-precedence rule.
+
 use std::{str::FromStr, sync::Arc};
 
 use num_bigint::BigInt;
@@ -11,19 +15,19 @@ use crate::{
             MulOp, Number, PowExpr, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
         },
     },
-    lexer::tokenize::{Keyword, Operator, Separator, Token, TokenKind},
+    lexer::tokenize::{Keyword, Operator, Separator, Token, TokenNode},
 };
 
 fn parse_number(
     interpreter: Arc<Interpreter>,
-    token: &[Token],
+    token: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<Number>> {
     if idx >= token.len() {
         return None;
     }
 
-    if let TokenKind::Number(num) = &token[idx].value {
+    if let Token::Number(num) = &token[idx].value {
         if num.contains('.') {
             Some(ParseResult::new(
                 idx + 1,
@@ -42,14 +46,14 @@ fn parse_number(
 
 fn parse_none(
     _interpreter: Arc<Interpreter>,
-    token: &[Token],
+    token: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<()>> {
     if idx >= token.len() {
         return None;
     }
 
-    if token[idx].value == TokenKind::Keyword(Keyword::None) {
+    if token[idx].value == Token::Keyword(Keyword::None) {
         Some(ParseResult::new(idx + 1, ()))
     } else {
         None
@@ -58,14 +62,14 @@ fn parse_none(
 
 fn parse_string(
     _interpreter: Arc<Interpreter>,
-    token: &[Token],
+    token: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<String>> {
     if idx >= token.len() {
         return None;
     }
 
-    if let TokenKind::String(s) = &token[idx].value {
+    if let Token::String(s) = &token[idx].value {
         Some(ParseResult::new(idx + 1, s.clone()))
     } else {
         None
@@ -74,14 +78,14 @@ fn parse_string(
 
 pub(in crate::eval) fn parse_lvalue(
     _interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<LValue>> {
     if idx >= tokens.len() {
         return None;
     }
 
-    if let TokenKind::Identifier(name) = &tokens[idx].value {
+    if let Token::Identifier(name) = &tokens[idx].value {
         Some(ParseResult::new(idx + 1, LValue::new(name.clone())))
     } else {
         None
@@ -90,7 +94,7 @@ pub(in crate::eval) fn parse_lvalue(
 
 fn parse_primary_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<PrimaryExpr>> {
     if idx >= tokens.len() {
@@ -123,9 +127,9 @@ fn parse_primary_expr(
     }
 
     if idx + 2 < tokens.len()
-        && tokens[idx].value == TokenKind::Separator(Separator::LeftParen)
+        && tokens[idx].value == Token::Separator(Separator::LeftParen)
         && let Some(expr) = parse_expr(interpreter, tokens, idx + 1)
-        && tokens[expr.idx].value == TokenKind::Separator(Separator::RightParen)
+        && tokens[expr.idx].value == Token::Separator(Separator::RightParen)
     {
         return Some(ParseResult::new(
             expr.idx + 1,
@@ -137,7 +141,7 @@ fn parse_primary_expr(
 
 fn parse_pow_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<PowExpr>> {
     if idx >= tokens.len() {
@@ -146,7 +150,7 @@ fn parse_pow_expr(
 
     if let Some(primary) = parse_primary_expr(interpreter.clone(), tokens, idx) {
         if primary.idx + 1 < tokens.len()
-            && tokens[primary.idx].value == TokenKind::Operator(Operator::Pow)
+            && tokens[primary.idx].value == Token::Operator(Operator::Pow)
             && let Some(right) = parse_pow_expr(interpreter.clone(), tokens, primary.idx + 1)
         {
             return Some(ParseResult::new(
@@ -166,14 +170,14 @@ fn parse_pow_expr(
 
 fn parse_unary_op(
     _interpreter: Arc<Interpreter>,
-    token: &[Token],
+    token: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<UnaryOp>> {
     if idx >= token.len() {
         return None;
     }
 
-    if let TokenKind::Operator(op) = &token[idx].value {
+    if let Token::Operator(op) = &token[idx].value {
         match op {
             Operator::Add => Some(ParseResult::new(idx + 1, UnaryOp::Pos)),
             Operator::Sub => Some(ParseResult::new(idx + 1, UnaryOp::Neg)),
@@ -187,7 +191,7 @@ fn parse_unary_op(
 
 fn parse_unary_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<UnaryExpr>> {
     if idx >= tokens.len() {
@@ -213,14 +217,14 @@ fn parse_unary_expr(
 
 fn parse_mul_op(
     _interpreter: Arc<Interpreter>,
-    token: &[Token],
+    token: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<MulOp>> {
     if idx >= token.len() {
         return None;
     }
 
-    if let TokenKind::Operator(op) = &token[idx].value {
+    if let Token::Operator(op) = &token[idx].value {
         match op {
             Operator::Mul => Some(ParseResult::new(idx + 1, MulOp::Mul)),
             Operator::FloorDiv => Some(ParseResult::new(idx + 1, MulOp::FloorDiv)),
@@ -235,7 +239,7 @@ fn parse_mul_op(
 
 fn parse_mul_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<MulExpr>> {
     if idx >= tokens.len() {
@@ -262,14 +266,14 @@ fn parse_mul_expr(
 
 fn parse_add_op(
     _interpreter: Arc<Interpreter>,
-    token: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<AddOp>> {
-    if idx >= token.len() {
+    if idx >= tokens.len() {
         return None;
     }
 
-    if let TokenKind::Operator(op) = &token[idx].value {
+    if let Token::Operator(op) = &tokens[idx].value {
         match op {
             Operator::Add => Some(ParseResult::new(idx + 1, AddOp::Add)),
             Operator::Sub => Some(ParseResult::new(idx + 1, AddOp::Sub)),
@@ -282,7 +286,7 @@ fn parse_add_op(
 
 fn parse_add_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<AddExpr>> {
     if idx >= tokens.len() {
@@ -309,14 +313,14 @@ fn parse_add_expr(
 
 fn parse_rel_op(
     _interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<RelOp>> {
     if idx >= tokens.len() {
         return None;
     }
 
-    if let TokenKind::Operator(op) = &tokens[idx].value {
+    if let Token::Operator(op) = &tokens[idx].value {
         match op {
             Operator::Less => Some(ParseResult::new(idx + 1, RelOp::Lt)),
             Operator::Greater => Some(ParseResult::new(idx + 1, RelOp::Gt)),
@@ -331,7 +335,7 @@ fn parse_rel_op(
 
 fn parse_rel_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<RelExpr>> {
     if idx >= tokens.len() {
@@ -358,14 +362,14 @@ fn parse_rel_expr(
 
 fn parse_eq_op(
     _interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<EqOp>> {
     if idx >= tokens.len() {
         return None;
     }
 
-    if let TokenKind::Operator(op) = &tokens[idx].value {
+    if let Token::Operator(op) = &tokens[idx].value {
         match op {
             Operator::Equal => Some(ParseResult::new(idx + 1, EqOp::Eq)),
             Operator::NotEqual => Some(ParseResult::new(idx + 1, EqOp::NotEq)),
@@ -378,7 +382,7 @@ fn parse_eq_op(
 
 fn parse_eq_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<EqExpr>> {
     if idx >= tokens.len() {
@@ -405,7 +409,7 @@ fn parse_eq_expr(
 
 fn parse_not_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<LNotExpr>> {
     if idx >= tokens.len() {
@@ -413,7 +417,7 @@ fn parse_not_expr(
     }
 
     if idx + 1 < tokens.len()
-        && tokens[idx].value == TokenKind::Keyword(Keyword::Not)
+        && tokens[idx].value == Token::Keyword(Keyword::Not)
         && let Some(expr) = parse_not_expr(interpreter.clone(), tokens, idx + 1)
     {
         return Some(ParseResult::new(expr.idx, LNotExpr::new_not(expr.value)));
@@ -428,7 +432,7 @@ fn parse_not_expr(
 
 fn parse_and_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<LAndExpr>> {
     if idx >= tokens.len() {
@@ -437,7 +441,7 @@ fn parse_and_expr(
 
     if let Some(left) = parse_not_expr(interpreter.clone(), tokens, idx)
         && left.idx + 1 < tokens.len()
-        && tokens[left.idx].value == TokenKind::Keyword(Keyword::And)
+        && tokens[left.idx].value == Token::Keyword(Keyword::And)
         && let Some(right) = parse_and_expr(interpreter.clone(), tokens, left.idx + 1)
     {
         return Some(ParseResult::new(
@@ -455,7 +459,7 @@ fn parse_and_expr(
 
 fn parse_or_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<LOrExpr>> {
     if idx >= tokens.len() {
@@ -464,7 +468,7 @@ fn parse_or_expr(
 
     if let Some(left) = parse_and_expr(interpreter.clone(), tokens, idx)
         && left.idx + 1 < tokens.len()
-        && tokens[left.idx].value == TokenKind::Keyword(Keyword::Or)
+        && tokens[left.idx].value == Token::Keyword(Keyword::Or)
         && let Some(right) = parse_or_expr(interpreter.clone(), tokens, left.idx + 1)
     {
         return Some(ParseResult::new(
@@ -482,7 +486,7 @@ fn parse_or_expr(
 
 pub fn parse_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<Expr>> {
     if idx >= tokens.len() {

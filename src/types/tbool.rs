@@ -29,7 +29,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     );
 }
 
-// Bool Value
+/// A Python boolean value.
 #[derive(Debug)]
 pub struct PyBool {
     ty: Arc<PyType>,

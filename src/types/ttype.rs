@@ -54,8 +54,11 @@ pub fn init_functions(interpreter: Arc<Interpreter>) {
     }
 }
 
-/// For cyclic reference of type, `Weak` is only used for internal reference, and `Arc` is used for
-/// external reference.
+/// Holds either a strong or weak reference to a `T`.
+///
+/// `PyType` is self-referential: its `ty` field points back to `type` (the type of all types).
+/// Internally this self-reference is stored as a `Weak` to break the cycle; external callers
+/// always receive an `Arc`.
 #[derive(Debug)]
 enum ArcOrWeak<T> {
     Arc(Arc<T>),
@@ -89,6 +92,7 @@ impl Clone for ArcOrWeak<PyType> {
     }
 }
 
+/// Heap-allocated data shared among all clones of a [`PyType`].
 #[derive(Debug)]
 struct PyTypeInner {
     pub name: String,
@@ -96,6 +100,12 @@ struct PyTypeInner {
     pub mro: Vec<Arc<PyType>>,
 }
 
+/// The runtime representation of a Python type object (the `type` type and all its instances).
+///
+/// Every [`PyValue`] carries an `Arc<PyType>` identifying its type. `PyType` itself is also a
+/// `PyValue`, so `type` is its own type — the self-reference is managed via [`ArcOrWeak`].
+///
+/// [`PyValue`]: crate::var::PyValue
 #[derive(Debug)]
 pub struct PyType {
     ty: ArcOrWeak<PyType>,
@@ -113,6 +123,7 @@ impl PyValue for PyType {
 }
 
 impl PyType {
+    /// Creates a new `PyType` with the given name, looking up its own `type` from the interpreter.
     pub fn new(name: &str, interpreter: Arc<Interpreter>) -> Self {
         Self {
             ty: ArcOrWeak::Arc(get_type(interpreter)),
@@ -124,6 +135,7 @@ impl PyType {
         }
     }
 
+    /// Registers a method on this type by name.
     pub fn add_function(&self, name: &str, func: PyFunction) {
         self.inner.vars.lock().unwrap().get_mapper_mut().insert(
             name.to_string(),
@@ -131,10 +143,12 @@ impl PyType {
         );
     }
 
+    /// Returns the name of this type (e.g. `"int"`, `"str"`).
     pub fn get_name(&self) -> &str {
         &self.inner.name
     }
 
+    /// Returns the method resolution order (MRO) of this type.
     pub fn get_mro(&self) -> &[Arc<PyType>] {
         &self.inner.mro
     }

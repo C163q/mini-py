@@ -3,7 +3,7 @@ use std::{mem, sync::Arc};
 use crate::{
     Interpreter,
     eval::{Eval, ParseResult, SetBlock, ast::IfStmt},
-    lexer::tokenize::{Keyword, Separator, Token, TokenKind},
+    lexer::tokenize::{Keyword, Separator, Token, TokenNode},
     types::{error, tbool::PyBool},
     var::PyValue,
 };
@@ -38,9 +38,13 @@ impl Eval for IfStmt {
     }
 }
 
+/// Attempts to parse `if <condition> :` from `tokens` starting at `idx`.
+///
+/// Returns `None` if the token sequence does not match an `if` header. The returned
+/// [`IfStmt`] has no body yet; the body is attached later via [`SetBlock::set_block`].
 pub fn parse_if(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<IfStmt>> {
     // idx + 1 is the index of the next token after 'if'
@@ -48,10 +52,10 @@ pub fn parse_if(
         return None;
     }
 
-    if tokens[idx].value == TokenKind::Keyword(Keyword::If)
+    if tokens[idx].value == Token::Keyword(Keyword::If)
         && let Some(condition) = super::expr::parse_expr(interpreter.clone(), tokens, idx + 1)
         && condition.idx < tokens.len()
-        && tokens[condition.idx].value == TokenKind::Separator(Separator::Colon)
+        && tokens[condition.idx].value == Token::Separator(Separator::Colon)
     {
         return Some(ParseResult::new(
             condition.idx + 1,
@@ -62,6 +66,8 @@ pub fn parse_if(
     None
 }
 
+/// Evaluates an [`IfStmt`]: evaluates the condition, records the result in [`SemState`] for
+/// a potential `else` branch, and executes the body block if the condition is truthy.
 pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc<dyn PyValue>> {
     let cond = super::expr::eval_expr(interpreter.clone(), if_stmt.condition)?;
     let func = cond.get_var(interpreter.clone(), "__bool__")?;

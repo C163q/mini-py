@@ -27,7 +27,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     );
 }
 
-/// Object Value
+/// The Python `object` base type.
 #[derive(Debug)]
 pub struct PyObject {
     ty: Arc<PyType>,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     Interpreter,
     eval::{Eval, ParseResult, ast::Expr},
-    lexer::tokenize::Token,
+    lexer::tokenize::TokenNode,
     var::PyValue,
 };
 
@@ -21,14 +21,18 @@ impl Eval for Expr {
     }
 }
 
+/// Attempts to parse an [`Expr`] from `tokens` starting at `idx`.
+///
+/// Returns `None` if no valid expression begins at that position.
 pub fn parse_expr(
     interpreter: Arc<Interpreter>,
-    tokens: &[Token],
+    tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<Expr>> {
     parse::parse_expr(interpreter, tokens, idx)
 }
 
+/// Evaluates an [`Expr`] and returns the resulting Python value.
 pub fn eval_expr(
     interpreter: Arc<Interpreter>,
     expr: Expr,

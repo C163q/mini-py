@@ -36,7 +36,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     );
 }
 
-/// String
+/// A Python string value.
 #[derive(Debug)]
 pub struct PyStr {
     ty: Arc<PyType>,

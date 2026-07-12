@@ -12,6 +12,7 @@ use crate::{
 pub mod builtin;
 pub mod wrapper;
 
+/// A thread-safe, heap-allocated callable that implements a built-in Python function.
 pub type BuiltinPyFunction = Arc<
     dyn Fn(Arc<Interpreter>, Vec<Arc<dyn PyValue>>) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>>
         + Send
@@ -47,7 +48,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     }
 }
 
-/// Function Value
+/// A Python callable backed by a [`BuiltinPyFunction`].
 pub struct PyFunction {
     ty: Arc<PyType>,
     vars: Mutex<VarManager>,

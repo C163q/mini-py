@@ -56,7 +56,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
     )
 }
 
-/// Int Value
+/// A Python floating-point number, backed by [`f64`].
 #[derive(Debug)]
 pub struct PyFloat {
     ty: Arc<PyType>,

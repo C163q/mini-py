@@ -25,6 +25,17 @@ pub mod lexer;
 pub mod types;
 pub mod var;
 
+/// A mini-Python interpreter.
+///
+/// It manages the variables (types are treated as variables), the lexer context, and the semantic
+/// context.
+///
+/// Designed to be thread-safe; multiple threads may access and modify the interpreter concurrently
+/// (not implemented yet). [`Arc<Self>`] is recommended wrapper when sharing across threads.
+///
+/// The interpreter **must** be initialized with built-in types and functions before use; otherwise,
+/// numbers, strings, and other built-in types will not be available. Call
+/// [`Interpreter::init_builtin_types`] to perform this initialization.
 pub struct Interpreter {
     initialized: AtomicBool,
     var_mapper: Mutex<VarManager>,
@@ -40,19 +51,33 @@ impl Default for Interpreter {
 }
 
 impl Interpreter {
+    /// Creates an interpreter with built-in types initialized.
     pub fn new() -> Self {
         let interpreter = Self::new_arc();
-        // Never panic
+        // Safe: no other `Arc` references exist since we just created this.
         Arc::into_inner(interpreter).unwrap()
     }
 
+    /// Creates an [`Arc`]-wrapped interpreter with built-in types initialized.
     pub fn new_arc() -> Arc<Self> {
         let interpreter = Arc::new(Self::build());
         interpreter.clone().init_builtin_types();
         interpreter
     }
 
-    /// Get the interpreter without initializing the built-in types.
+    /// Creates an interpreter without initializing the built-in types.
+    ///
+    /// Use this when you need to configure the interpreter before initialization
+    /// (e.g., enabling REPL output before wrapping in [`Arc`]).
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// let mut interpreter = Interpreter::build();
+    /// interpreter.open_repl_output();
+    /// let interpreter = Arc::new(interpreter);
+    /// interpreter.clone().init_builtin_types();
+    /// ```
     pub fn build() -> Self {
         Self {
             initialized: AtomicBool::new(false),
@@ -63,7 +88,12 @@ impl Interpreter {
         }
     }
 
+    /// Initializes the built-in types and functions. This should be called before using the
+    /// interpreter.
     pub fn init_builtin_types(self: Arc<Self>) {
+        if self.initialized.load(atomic::Ordering::SeqCst) {
+            return;
+        }
         types::init::register_types(self.clone());
         types::init::register_functions(self.clone())
             .expect("Failed to register built-in functions");
@@ -72,6 +102,9 @@ impl Interpreter {
 
     /// Registers a new type with the interpreter. If a type with the same name already exists, an
     /// error is returned.
+    ///
+    /// This is pretty much the same as [`Interpreter::set_var`], but it is more convenient to use
+    /// for defining new types.
     pub fn register_type(
         self: Arc<Self>,
         ty: Arc<PyType>,
@@ -88,18 +121,34 @@ impl Interpreter {
         }
     }
 
+    /// Opens the REPL output stream. If the REPL output stream is already open, this does nothing.
+    ///
+    /// After calling, the result of evaluating a line will be printed to the REPL output stream.
+    /// By default, it is the [`Stdout`].
+    ///
+    /// [`Stdout`]: std::io::Stdout
     pub fn open_repl_output(&mut self) {
         if self.repl_output.is_none() {
             self.repl_output = Some(io::stdout());
         }
     }
 
+    /// Returns the lexical context of the interpreter.
     pub fn get_lex_context(&self) -> &LexContext {
         &self.lex_context
     }
 
+    /// Looks up a [`PyType`] by name.
+    ///
+    /// This is similar to [`Interpreter::get_var`], but additionally verifies that the resolved
+    /// variable is a type.
+    ///
+    /// ## Errors
+    ///
+    /// - `NameError` if no variable with the given name exists.
+    /// - `TypeError` if the variable exists but is not a [`PyType`].
     pub fn get_type(self: Arc<Self>, name: &str) -> Result<Arc<PyType>, Arc<dyn PyValue>> {
-        let var = self
+        let var: Option<Var> = self
             .var_mapper
             .lock()
             .unwrap() // VarManager
@@ -110,6 +159,8 @@ impl Interpreter {
         let var = match var {
             Some(var) => var,
             None => {
+                // An uninitialized interpreter has no built-in types, so any lookup failure
+                // at this stage is a programming error rather than a recoverable runtime error.
                 if !self.initialized.load(atomic::Ordering::SeqCst) {
                     panic!("Interpreter is not initialized. Cannot get type '{}'", name);
                 }
@@ -122,6 +173,7 @@ impl Interpreter {
         }
         .get(self.clone())?; // Arc<dyn PyValue>
 
+        // Check if the variable is a PyType. If not, return a TypeError.
         match var.as_arc_any().downcast::<PyType>() {
             Ok(ty) => Ok(ty),
             Err(_) => {
@@ -137,6 +189,11 @@ impl Interpreter {
         }
     }
 
+    /// Looks up a variable by name.
+    ///
+    /// ## Errors
+    ///
+    /// - `NameError` if no variable with the given name exists.
     pub fn get_var(self: Arc<Self>, name: &str) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
         let var = self
             .var_mapper
@@ -158,6 +215,7 @@ impl Interpreter {
         Ok(var)
     }
 
+    /// Assigns a value to a variable by name, overwriting any existing binding.
     pub fn set_var(
         self: Arc<Self>,
         name: &str,
@@ -177,6 +235,11 @@ impl Interpreter {
         }
     }
 
+    /// Evaluates a single line of code. If the REPL output stream is open, the result is printed to it.
+    ///
+    /// ## Errors
+    ///
+    /// Any evaluation error is currently returned as an unhandled error.
     pub fn eval_line(self: Arc<Self>, line: &str) -> Result<(), InterpreterError> {
         let output = eval::eval_line(self.clone(), line);
         let output = match output {
@@ -195,6 +258,7 @@ impl Interpreter {
         Ok(())
     }
 
+    /// Prints `value` to the REPL output stream, if one is open.
     pub fn output_pystr_if_repl(self: Arc<Self>, value: PyStr) -> Result<(), Arc<dyn PyValue>> {
         if let Some(repl_output) = &self.repl_output {
             writeln!(repl_output.lock(), "{}", value).map_err(|e| {

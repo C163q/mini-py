@@ -11,10 +11,16 @@ use crate::{
     types::{float::PyFloat, int::PyInt},
 };
 
+/// An `if` statement whose body may not yet have been parsed.
+///
+/// When first constructed only the condition is known. The body [`Block`] is supplied later
+/// via [`SetBlock::set_block`] once the indented lines have been collected.
+///
+/// [`SetBlock::set_block`]: crate::eval::SetBlock::set_block
 #[derive(Debug, Clone)]
 pub struct IfStmt {
     pub condition: Expr,
-    /// None if the body is not yet parsed
+    /// `None` until the body block has been parsed and attached.
     pub body: Option<Block>,
 }
 
@@ -27,6 +33,10 @@ impl IfStmt {
     }
 }
 
+/// A sequence of lines that form the body of a compound statement (e.g. `if`).
+///
+/// All lines share the same `base_indent`. The first line's indentation must equal
+/// `base_indent`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub base_indent: OwnedLineIndent,
@@ -48,6 +58,7 @@ impl Block {
     }
 }
 
+/// An assignment statement: `<lvalue> = <expr>`.
 #[derive(Debug, Clone)]
 pub struct Assign {
     pub target: LValue,
@@ -60,6 +71,7 @@ impl Assign {
     }
 }
 
+/// An assignable target (currently only a bare identifier).
 #[derive(Debug, Clone)]
 pub struct LValue {
     pub name: String,
@@ -71,6 +83,11 @@ impl LValue {
     }
 }
 
+/// The top-level expression node, wrapping the operator-precedence hierarchy.
+///
+/// The hierarchy from lowest to highest precedence is:
+/// `Expr` → `LOrExpr` → `LAndExpr` → `LNotExpr` → `EqExpr` → `RelExpr` → `AddExpr`
+/// → `MulExpr` → `UnaryExpr` → `PowExpr` → `PrimaryExpr`.
 #[derive(Debug, Clone)]
 pub struct Expr {
     pub value: LOrExpr,
@@ -119,6 +136,7 @@ impl_expr!(
     Number
 );
 
+/// A logical-OR expression: `<a> or <b>`, or a bare `LAndExpr` if no `or` is present.
 #[derive(Debug, Clone)]
 pub enum LOrExpr {
     Or(Box<LAndExpr>, Box<LOrExpr>),
@@ -171,6 +189,7 @@ impl LOrExpr {
     }
 }
 
+/// A logical-AND expression: `<a> and <b>`, or a bare `LNotExpr` if no `and` is present.
 #[derive(Debug, Clone)]
 pub enum LAndExpr {
     And(Box<LNotExpr>, Box<LAndExpr>),
@@ -219,6 +238,7 @@ impl LAndExpr {
     }
 }
 
+/// A logical-NOT expression: `not <a>`, or a bare `EqExpr` if no `not` is present.
 #[derive(Debug, Clone)]
 pub enum LNotExpr {
     Not(Box<LNotExpr>),
@@ -263,12 +283,14 @@ impl LNotExpr {
     }
 }
 
+/// Equality comparison operators: `==` and `!=`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EqOp {
     Eq,
     NotEq,
 }
 
+/// An equality comparison: `<a> == <b>`, `<a> != <b>`, or a bare `RelExpr`.
 #[derive(Debug, Clone)]
 pub enum EqExpr {
     Expr {
@@ -317,6 +339,7 @@ impl EqExpr {
     }
 }
 
+/// Relational comparison operators: `<`, `>`, `<=`, `>=`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RelOp {
     Lt,
@@ -325,6 +348,7 @@ pub enum RelOp {
     Ge,
 }
 
+/// A relational comparison: `<a> < <b>` etc., or a bare `AddExpr`.
 #[derive(Debug, Clone)]
 pub enum RelExpr {
     Expr {
@@ -369,12 +393,14 @@ impl RelExpr {
     }
 }
 
+/// Additive operators: `+` and `-`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddOp {
     Add,
     Sub,
 }
 
+/// An additive expression: `<a> + <b>`, `<a> - <b>`, or a bare `MulExpr`.
 #[derive(Debug, Clone)]
 pub enum AddExpr {
     Expr {
@@ -415,6 +441,7 @@ impl AddExpr {
     }
 }
 
+/// Multiplicative operators: `*`, `/`, `//`, `%`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MulOp {
     Mul,
@@ -423,6 +450,7 @@ pub enum MulOp {
     Mod,
 }
 
+/// A multiplicative expression: `<a> * <b>` etc., or a bare `UnaryExpr`.
 #[derive(Debug, Clone)]
 pub enum MulExpr {
     Expr {
@@ -459,6 +487,7 @@ impl MulExpr {
     }
 }
 
+/// Unary operators: `+`, `-`, `~`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     Pos,
@@ -467,6 +496,7 @@ pub enum UnaryOp {
     // TODO
 }
 
+/// A unary expression: `+<a>`, `-<a>`, `~<a>`, or a bare `PowExpr`.
 #[derive(Debug, Clone)]
 pub enum UnaryExpr {
     Expr { op: UnaryOp, expr: Box<UnaryExpr> },
@@ -494,6 +524,7 @@ impl UnaryExpr {
     }
 }
 
+/// An exponentiation expression: `<a> ** <b>`, or a bare `PrimaryExpr`.
 #[derive(Debug, Clone)]
 pub enum PowExpr {
     Expr {
@@ -520,6 +551,8 @@ impl PowExpr {
     }
 }
 
+/// The highest-precedence expression form: a parenthesised expression, a numeric literal,
+/// `None`, a string literal, or a variable name.
 #[derive(Debug, Clone)]
 pub enum PrimaryExpr {
     Expr(Box<Expr>),
@@ -551,6 +584,7 @@ impl PrimaryExpr {
     }
 }
 
+/// A numeric literal: either an integer or a floating-point value.
 #[derive(Debug, Clone)]
 pub enum Number {
     Int(PyInt),

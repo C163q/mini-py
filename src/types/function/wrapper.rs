@@ -19,6 +19,11 @@ type ResultFunc<T> =
 type MethodFunc<T> =
     Box<dyn Fn(&T, Arc<Interpreter>, ValueArgs) -> FuncResult<ArcValue> + Send + Sync + 'static>;
 
+/// Validates that `got` matches the expected argument types by name.
+///
+/// Use [`ANY_TYPE_NAME`] as an entry in `expected` to accept any type for that position.
+///
+/// [`ANY_TYPE_NAME`]: crate::types::init::ANY_TYPE_NAME
 pub fn check_args(
     interpreter: Arc<Interpreter>,
     expected: &[&str],
@@ -49,6 +54,9 @@ pub fn check_args(
     Ok(())
 }
 
+/// Wraps a typed method (`&T, interpreter, args`) into an untyped `ResultFunc`.
+///
+/// The first element of `values` is downcast to `T`; a `TypeError` is returned if it fails.
 pub fn method_to_func<T: PyValue>(
     type_name: &'static str,
     func: MethodFunc<T>,
@@ -75,26 +83,30 @@ pub fn method_to_func<T: PyValue>(
     })
 }
 
+/// Lifts an infallible `BasicFunc` into a `ResultFunc` by wrapping its return value in `Ok`.
 pub fn with_result_handler<T: 'static>(func: BasicFunc<T>) -> ResultFunc<T> {
     Box::new(move |interpreter, value| Ok(func(interpreter, value)))
 }
 
+/// Converts a `ResultFunc<ArcValue>` into a [`BuiltinPyFunction`] by wrapping it in an `Arc`.
 pub fn to_arc_func(func: ResultFunc<ArcValue>) -> BuiltinPyFunction {
     Arc::from(func)
 }
 
+/// Converts a `ResultFunc<ArcValue>` into a [`PyFunction`].
 pub fn to_pyfunc(interpreter: Arc<Interpreter>, func: ResultFunc<ArcValue>) -> PyFunction {
     PyFunction::new(interpreter, to_arc_func(func))
 }
 
+/// Shorthand for `to_pyfunc(interpreter, method_to_func(type_name, Box::new(func)))`.
 pub fn method_to_pyfunc<T, F>(
     type_name: &'static str,
-    interpreter_arc: Arc<Interpreter>,
+    interpreter: Arc<Interpreter>,
     func: F,
 ) -> PyFunction
 where
     T: PyValue,
     F: Fn(&T, Arc<Interpreter>, ValueArgs) -> FuncResult<ArcValue> + Send + Sync + 'static,
 {
-    to_pyfunc(interpreter_arc, method_to_func(type_name, Box::new(func)))
+    to_pyfunc(interpreter, method_to_func(type_name, Box::new(func)))
 }
