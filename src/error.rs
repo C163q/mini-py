@@ -4,9 +4,9 @@ use crate::lexer::line::Line;
 
 /// The error type for the interpreter.
 ///
-/// ## Arc<PyValue> vs InterpreterError
+/// ## `Arc<PyValue>` vs InterpreterError
 ///
-/// Arc<PyValue> is treated as a Exception in Python, while InterpreterError is treated as an
+/// `Arc<PyValue>` is treated as a Exception in Python, while InterpreterError is treated as an
 /// internal error in the interpreter.
 #[derive(Debug, Clone)]
 pub enum InterpreterError {

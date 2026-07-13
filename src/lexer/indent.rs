@@ -475,7 +475,6 @@ mod tests {
             ];
 
             let result = indent.cmp_level(&given);
-            println!("Result: {:?}", result);
             assert!(matches!(result, Ok(CmpIndent::Less(_))));
         }
     }

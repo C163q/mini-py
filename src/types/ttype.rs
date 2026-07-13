@@ -103,7 +103,7 @@ struct PyTypeInner {
 /// The runtime representation of a Python type object (the `type` type and all its instances).
 ///
 /// Every [`PyValue`] carries an `Arc<PyType>` identifying its type. `PyType` itself is also a
-/// `PyValue`, so `type` is its own type — the self-reference is managed via [`ArcOrWeak`].
+/// `PyValue`, so `type` is its own type.
 ///
 /// [`PyValue`]: crate::var::PyValue
 #[derive(Debug)]

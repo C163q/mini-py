@@ -68,6 +68,8 @@ pub fn parse_if(
 
 /// Evaluates an [`IfStmt`]: evaluates the condition, records the result in [`SemState`] for
 /// a potential `else` branch, and executes the body block if the condition is truthy.
+///
+/// [`SemState`]: crate::eval::SemState
 pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc<dyn PyValue>> {
     let cond = super::expr::eval_expr(interpreter.clone(), if_stmt.condition)?;
     let func = cond.get_var(interpreter.clone(), "__bool__")?;
@@ -84,8 +86,6 @@ pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc
         Some(b) => b.get_value(),
     };
 
-    interpreter.sem_context.lock().unwrap().state.last_if_result = Some(cond);
-
     // TODO: eval Block if cond is true
     if cond {
         super::block::eval_block(
@@ -93,6 +93,8 @@ pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc
             if_stmt.body.expect("IfStmt body is None"),
         )?;
     }
+
+    interpreter.sem_context.lock().unwrap().state.last_if_result = Some(cond);
 
     Ok(())
 }

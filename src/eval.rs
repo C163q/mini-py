@@ -175,6 +175,56 @@ pub fn eval_line(
     eval_line_with_indent(interpreter, line, LineIndent::new(), lexer::lex_raw_line)
 }
 
+/// Finalizes and evaluates any block still buffered in the [`LexContext`], for use once the
+/// input stream has ended.
+///
+/// A block is normally closed off (and evaluated) when a later line arrives with a shallower
+/// indent than the block. If the input ends first, no such line ever arrives, so the buffered
+/// lines would otherwise be silently dropped. Call this once after the last line has been fed
+/// to force the trailing block to build and evaluate.
+///
+/// Returns `Ok(None)` if there was no buffered block to finish.
+///
+/// This matters even for a nested block that is itself part of an outer block, not just for
+/// the outermost one. In the example below, the outer `if 1:` treats `if 2:` and `2` together
+/// as a single [`Block`], which is evaluated line by line once the outer block closes. That
+/// evaluates `if 2:`, which in turn expects its own block and starts buffering `2` as that
+/// block's body — but since no further line ever dedents past it, this inner block never
+/// closes on its own. Without calling `eval_line_finished`, that buffered `2` is silently
+/// dropped while the interpreter is left still expecting a block for the inner `if`,
+/// which then surfaces as a misleading "unexpected indent" [`SyntaxError`] on whatever line
+/// is fed in next (here, `1`) rather than the real issue.
+///
+/// ```mini-py
+/// if 1:
+///   if 2:
+///     2 # The block should finish here, but since there are no more lines, the parsed lines are
+///       # cached in the interpreter and the block is never built.
+///       # In this case, eval_line_finished should be called to finish the block and evaluate it.
+/// 1
+/// ```
+///
+/// [`LexContext`]: crate::lexer::LexContext
+/// [`Block`]: ast::Block
+/// [`SyntaxError`]: crate::types::error::get_syntax_error
+pub fn eval_line_finished(
+    interpreter: Arc<Interpreter>,
+) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
+    if let Ok(block) = interpreter
+        .get_lex_context()
+        .get_and_clear_block_context()
+        .build_block()
+    {
+        return eval_line_from_token(interpreter.clone(), &[TokenNode::new(Token::Block(block))]);
+    }
+
+    // TODO:
+    // interpreter.sem_context.lock().unwrap().indent.expected_indent.is_some() -> SyntaxError:
+    // expected indent.
+
+    Ok(None)
+}
+
 type LexerFn<T> = fn(Arc<Interpreter>, T, LineIndent) -> Result<lexer::LexTokens, Arc<dyn PyValue>>;
 
 fn eval_line_with_indent<T>(
@@ -186,7 +236,10 @@ fn eval_line_with_indent<T>(
     let lex_tokens = lexer(interpreter.clone(), line, indent)?;
 
     if let Some(block) = lex_tokens.block {
-        eval_line_from_token(interpreter.clone(), &[TokenNode::new(Token::Block(block))])?;
+        eval_line_from_token(
+            interpreter.clone(),
+            &[TokenNode::new(Token::Block(block.clone()))],
+        )?;
     }
 
     if lex_tokens.tokens.is_empty() {
@@ -267,6 +320,7 @@ fn parse_and_eval_line(
             .unwrap()
             .indent
             .expected_indent = Some(Box::new(if_stmt.value));
+
         return Ok(None);
     }
 

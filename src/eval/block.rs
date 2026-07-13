@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    eval::{ast::Block, eval_line_with_indent},
+    eval::{ast::Block, eval_line_finished, eval_line_with_indent},
     lexer,
     var::PyValue,
 };
@@ -18,6 +18,11 @@ pub fn eval_block(interpreter: Arc<Interpreter>, block: Block) -> Result<(), Arc
         if let Some(py_str) = py_str {
             interpreter.clone().output_pystr_if_repl(py_str)?;
         }
+    }
+
+    let py_str = eval_line_finished(interpreter.clone())?;
+    if let Some(py_str) = py_str {
+        interpreter.output_pystr_if_repl(py_str)?;
     }
 
     Ok(())
