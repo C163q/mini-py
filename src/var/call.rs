@@ -16,7 +16,7 @@ fn call_inner(
         return builtin.call(interpreter, values[1..].to_vec());
     }
 
-    if let Ok(func) = values[0].get_var(interpreter.clone(), "__call__") {
+    if let Ok(func) = values[0].get_binding(interpreter.clone(), "__call__") {
         return call_inner(
             interpreter,
             [func].into_iter().chain(values[1..].to_vec()).collect(),

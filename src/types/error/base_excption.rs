@@ -7,7 +7,7 @@ use crate::{
         init::{self, PyFunctionMapper},
         tstr::PyStr,
     },
-    var::{PyValue, manager::VarManager},
+    var::{PyValue, namespace::Namespace},
 };
 
 const TYPE_NAME: &str = "BaseException";
@@ -31,7 +31,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 #[derive(Debug)]
 pub struct PyBaseException {
     message: String,
-    vars: Mutex<VarManager>,
+    vars: Mutex<Namespace>,
     ty: Arc<PyType>,
 }
 
@@ -39,7 +39,7 @@ impl PyBaseException {
     pub fn new(interpreter: Arc<Interpreter>, message: String) -> Self {
         Self {
             message,
-            vars: Mutex::new(VarManager::new()),
+            vars: Mutex::new(Namespace::new()),
             ty: get_type(interpreter),
         }
     }
@@ -50,7 +50,7 @@ impl PyValue for PyBaseException {
         self.ty.clone()
     }
 
-    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+    fn get_namespace(&self) -> MutexGuard<'_, Namespace> {
         self.vars.lock().unwrap()
     }
 }

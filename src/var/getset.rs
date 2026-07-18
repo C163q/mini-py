@@ -5,9 +5,9 @@ use std::{
 
 use crate::{Interpreter, types::error, var::PyValue};
 
-/// A thread-safe getter function that reads a [`PyValue`] from a [`Var`] entry.
+/// A thread-safe getter function that reads a [`PyValue`] from a [`Binding`] entry.
 ///
-/// [`Var`]: crate::var::manager::Var
+/// [`Binding`]: crate::var::namespace::Binding
 pub type Getter = Arc<
     dyn Fn(Arc<Interpreter>, &Arc<dyn PyValue>) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>>
         + 'static
@@ -15,9 +15,9 @@ pub type Getter = Arc<
         + Sync,
 >;
 
-/// A thread-safe setter function that writes a [`PyValue`] into a [`Var`] entry.
+/// A thread-safe setter function that writes a [`PyValue`] into a [`Binding`] entry.
 ///
-/// [`Var`]: crate::var::manager::Var
+/// [`Binding`]: crate::var::namespace::Binding
 pub type Setter = Arc<
     dyn Fn(
             Arc<Interpreter>,
@@ -48,13 +48,13 @@ fn default_setter(
 static DEFAULT_GETTER: LazyLock<Getter> = LazyLock::new(|| Arc::new(default_getter));
 static DEFAULT_SETTER: LazyLock<Setter> = LazyLock::new(|| Arc::new(default_setter));
 
-/// Descriptor that controls how a [`Var`] entry is read and written.
+/// Descriptor that controls how a [`Binding`] entry is read and written.
 ///
 /// Both getter and setter are optional. An entry with no getter returns an `AttributeError` on
 /// read; an entry with no setter returns an `AttributeError` on write. The [`Default`]
 /// implementation provides a plain pass-through getter and a direct-assignment setter.
 ///
-/// [`Var`]: crate::var::manager::Var
+/// [`Binding`]: crate::var::namespace::Binding
 #[derive(Clone)]
 pub struct PyGetSetDef {
     getter: Option<Getter>,

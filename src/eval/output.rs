@@ -15,7 +15,7 @@ pub fn output_value(
     interpreter: Arc<Interpreter>,
     value: Arc<dyn PyValue>,
 ) -> Result<PyStr, Arc<dyn PyValue>> {
-    if let Ok(repr_func) = value.get_var(interpreter.clone(), "__repr__") {
+    if let Ok(repr_func) = value.get_binding(interpreter.clone(), "__repr__") {
         let repr_value = crate::var::call::call(repr_func, interpreter.clone(), vec![value])?;
         if let Some(repr_str) = repr_value.as_any().downcast_ref::<PyStr>() {
             Ok(repr_str.clone())
@@ -25,7 +25,7 @@ pub fn output_value(
                 "__repr__ did not return a string".to_string(),
             ))
         }
-    } else if let Ok(str_func) = value.get_var(interpreter.clone(), "__str__") {
+    } else if let Ok(str_func) = value.get_binding(interpreter.clone(), "__str__") {
         let str_value = crate::var::call::call(str_func, interpreter.clone(), vec![value])?;
         if let Some(str_str) = str_value.as_any().downcast_ref::<PyStr>() {
             Ok(str_str.clone())
@@ -49,7 +49,7 @@ pub fn output_err_value(
     interpreter: Arc<Interpreter>,
     value: Arc<dyn PyValue>,
 ) -> Result<PyStr, InterpreterError> {
-    if let Ok(repr_func) = value.get_var(interpreter.clone(), "__repr__") {
+    if let Ok(repr_func) = value.get_binding(interpreter.clone(), "__repr__") {
         let repr_value = crate::var::call::call(repr_func, interpreter.clone(), vec![value])
             .map_err(|e| {
                 InterpreterError::new_unhandled(format!(
@@ -64,7 +64,7 @@ pub fn output_err_value(
                 "__repr__ did not return a string".to_string(),
             ))
         }
-    } else if let Ok(str_func) = value.get_var(interpreter.clone(), "__str__") {
+    } else if let Ok(str_func) = value.get_binding(interpreter.clone(), "__str__") {
         let str_value = crate::var::call::call(str_func, interpreter.clone(), vec![value])
             .map_err(|e| {
                 InterpreterError::new_unhandled(format!(

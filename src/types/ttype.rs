@@ -6,7 +6,7 @@ use crate::{
     var::{
         PyValue,
         getset::PyGetSetDef,
-        manager::{Var, VarManager},
+        namespace::{Binding, Namespace},
     },
 };
 
@@ -21,7 +21,7 @@ pub fn init_raw_type(interpreter: Arc<Interpreter>) {
 
     let inner = Arc::new(PyTypeInner {
         name: TYPE_NAME.to_string(),
-        vars: Mutex::new(VarManager::new()),
+        vars: Mutex::new(Namespace::new()),
         mro: vec![],
     });
     let mut ty = Current {
@@ -96,7 +96,7 @@ impl Clone for ArcOrWeak<PyType> {
 #[derive(Debug)]
 struct PyTypeInner {
     pub name: String,
-    pub vars: Mutex<VarManager>,
+    pub vars: Mutex<Namespace>,
     pub mro: Vec<Arc<PyType>>,
 }
 
@@ -117,7 +117,7 @@ impl PyValue for PyType {
         self.ty.clone().arc()
     }
 
-    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+    fn get_namespace(&self) -> MutexGuard<'_, Namespace> {
         self.inner.vars.lock().unwrap()
     }
 }
@@ -129,7 +129,7 @@ impl PyType {
             ty: ArcOrWeak::Arc(get_type(interpreter)),
             inner: Arc::new(PyTypeInner {
                 name: name.to_string(),
-                vars: Mutex::new(VarManager::new()),
+                vars: Mutex::new(Namespace::new()),
                 mro: vec![],
             }),
         }
@@ -139,7 +139,7 @@ impl PyType {
     pub fn add_function(&self, name: &str, func: PyFunction) {
         self.inner.vars.lock().unwrap().get_mapper_mut().insert(
             name.to_string(),
-            Var::new(Arc::new(func), PyGetSetDef::default()),
+            Binding::new(Arc::new(func), PyGetSetDef::default()),
         );
     }
 

@@ -14,7 +14,7 @@ use crate::{
         int::PyInt,
         tbool::PyBool,
     },
-    var::{PyValue, manager::VarManager},
+    var::{PyValue, namespace::Namespace},
 };
 
 const TYPE_NAME: &str = "str";
@@ -40,7 +40,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 #[derive(Debug)]
 pub struct PyStr {
     ty: Arc<PyType>,
-    vars: Mutex<VarManager>,
+    vars: Mutex<Namespace>,
     value: String,
 }
 
@@ -48,7 +48,7 @@ impl PyStr {
     pub fn new(interpreter: Arc<Interpreter>, value: String) -> Self {
         Self {
             ty: get_type(interpreter),
-            vars: Mutex::new(VarManager::new()),
+            vars: Mutex::new(Namespace::new()),
             value,
         }
     }
@@ -59,7 +59,7 @@ impl PyValue for PyStr {
         self.ty.clone()
     }
 
-    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+    fn get_namespace(&self) -> MutexGuard<'_, Namespace> {
         self.vars.lock().unwrap()
     }
 }

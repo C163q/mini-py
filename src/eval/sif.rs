@@ -72,7 +72,7 @@ pub fn parse_if(
 /// [`SemState`]: crate::eval::SemState
 pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc<dyn PyValue>> {
     let cond = super::expr::eval_expr(interpreter.clone(), if_stmt.condition)?;
-    let func = cond.get_var(interpreter.clone(), "__bool__")?;
+    let func = cond.get_binding(interpreter.clone(), "__bool__")?;
     let cond = match crate::var::call::call(func, interpreter.clone(), vec![cond])?
         .as_any()
         .downcast_ref::<PyBool>()

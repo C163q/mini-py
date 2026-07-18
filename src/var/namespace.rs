@@ -9,15 +9,14 @@ use crate::{
 ///
 /// Reading and writing the stored value always goes through the descriptor, which allows
 /// individual entries to be read-only, write-only, or computed on access.
-// TODO: rename to `Binding` (a name binding) or `VarEntry`
 #[derive(Debug, Clone)]
-pub struct Var {
+pub struct Binding {
     value: Arc<dyn PyValue>,
     pub getset: PyGetSetDef,
 }
 
-impl Var {
-    /// Creates a new `Var` with the given value and access descriptor.
+impl Binding {
+    /// Creates a new `Binding` with the given value and access descriptor.
     pub fn new(value: Arc<dyn PyValue>, getset: PyGetSetDef) -> Self {
         Self { value, getset }
     }
@@ -41,39 +40,38 @@ impl Var {
     }
 }
 
-/// Holds a mapping from attribute/variable names to their [`Var`] entries.
+/// Holds a mapping from attribute/variable names to their [`Binding`] entries.
 ///
-/// Every [`PyValue`] implementation owns a `VarManager` (behind a `Mutex`) to store its
+/// Every [`PyValue`] implementation owns a `Namespace` (behind a `Mutex`) to store its
 /// instance attributes. [`PyType`] also uses one to store the type's methods.
 ///
 /// [`PyType`]: crate::types::PyType
-// TODO: rename to `Namespace`
 #[derive(Debug, Clone)]
-pub struct VarManager {
-    pub map: HashMap<String, Var>,
+pub struct Namespace {
+    pub map: HashMap<String, Binding>,
 }
 
-impl Default for VarManager {
+impl Default for Namespace {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl VarManager {
-    /// Creates an empty `VarManager`.
+impl Namespace {
+    /// Creates an empty `Namespace`.
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
     }
 
-    /// Returns a shared reference to the underlying name-to-[`Var`] map.
-    pub fn get_mapper(&self) -> &HashMap<String, Var> {
+    /// Returns a shared reference to the underlying name-to-[`Binding`] map.
+    pub fn get_mapper(&self) -> &HashMap<String, Binding> {
         &self.map
     }
 
-    /// Returns a mutable reference to the underlying name-to-[`Var`] map.
-    pub fn get_mapper_mut(&mut self) -> &mut HashMap<String, Var> {
+    /// Returns a mutable reference to the underlying name-to-[`Binding`] map.
+    pub fn get_mapper_mut(&mut self) -> &mut HashMap<String, Binding> {
         &mut self.map
     }
 }

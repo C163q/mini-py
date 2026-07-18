@@ -17,7 +17,7 @@ use crate::{
         tbool::PyBool,
         tstr::PyStr,
     },
-    var::{PyValue, manager::VarManager},
+    var::{PyValue, namespace::Namespace},
 };
 
 const TYPE_NAME: &str = "int";
@@ -62,7 +62,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 #[derive(Debug)]
 pub struct PyInt {
     ty: Arc<PyType>,
-    vars: Mutex<VarManager>,
+    vars: Mutex<Namespace>,
     value: BigInt,
 }
 
@@ -70,7 +70,7 @@ impl PyInt {
     pub fn new(interpreter: Arc<Interpreter>, value: BigInt) -> Self {
         Self {
             ty: get_type(interpreter),
-            vars: Mutex::new(VarManager::new()),
+            vars: Mutex::new(Namespace::new()),
             value,
         }
     }
@@ -91,7 +91,7 @@ impl PyValue for PyInt {
         self.ty.clone()
     }
 
-    fn get_var_manager(&self) -> MutexGuard<'_, VarManager> {
+    fn get_namespace(&self) -> MutexGuard<'_, Namespace> {
         self.vars.lock().unwrap()
     }
 }

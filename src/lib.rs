@@ -15,7 +15,7 @@ use crate::{
     var::{
         PyValue,
         getset::PyGetSetDef,
-        manager::{Var, VarManager},
+        namespace::{Binding, Namespace},
     },
 };
 
@@ -38,7 +38,7 @@ pub mod var;
 /// [`Interpreter::init_builtin_types`] to perform this initialization.
 pub struct Interpreter {
     initialized: AtomicBool,
-    var_mapper: Mutex<VarManager>,
+    var_mapper: Mutex<Namespace>,
     lex_context: LexContext,
     sem_context: Mutex<SemContext>,
     repl_output: Option<io::Stdout>,
@@ -84,7 +84,7 @@ impl Interpreter {
     pub fn build() -> Self {
         Self {
             initialized: AtomicBool::new(false),
-            var_mapper: Mutex::new(VarManager::new()),
+            var_mapper: Mutex::new(Namespace::new()),
             sem_context: Mutex::new(SemContext::new()),
             lex_context: LexContext::new(),
             repl_output: None,
@@ -118,7 +118,7 @@ impl Interpreter {
                 "Type already registered",
             ))),
             Entry::Vacant(entry) => {
-                entry.insert(Var::new(ty.clone(), PyGetSetDef::default()));
+                entry.insert(Binding::new(ty.clone(), PyGetSetDef::default()));
                 Ok(ty)
             }
         }
@@ -151,12 +151,12 @@ impl Interpreter {
     /// - `NameError` if no variable with the given name exists.
     /// - `TypeError` if the variable exists but is not a [`PyType`].
     pub fn get_type(self: Arc<Self>, name: &str) -> Result<Arc<PyType>, Arc<dyn PyValue>> {
-        let var: Option<Var> = self
+        let var: Option<Binding> = self
             .var_mapper
             .lock()
-            .unwrap() // VarManager
+            .unwrap() // Namespace
             .get_mapper()
-            .get(name) // Option<&Var>
+            .get(name) // Option<&Binding>
             .cloned();
 
         let var = match var {
@@ -201,9 +201,9 @@ impl Interpreter {
         let var = self
             .var_mapper
             .lock()
-            .unwrap() // VarManager
+            .unwrap() // Namespace
             .get_mapper()
-            .get(name) // Option<Var>
+            .get(name) // Option<Binding>
             .cloned();
 
         let var = var
@@ -232,7 +232,7 @@ impl Interpreter {
         match mapper.entry(name.to_string()) {
             Entry::Occupied(mut occupied) => occupied.get_mut().set(self, value),
             Entry::Vacant(vacant) => {
-                vacant.insert(Var::new(value, PyGetSetDef::default()));
+                vacant.insert(Binding::new(value, PyGetSetDef::default()));
                 Ok(())
             }
         }

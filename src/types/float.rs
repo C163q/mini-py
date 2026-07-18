@@ -16,7 +16,7 @@ use crate::{
         tbool::PyBool,
         tstr::PyStr,
     },
-    var::{PyValue, manager::VarManager},
+    var::{PyValue, namespace::Namespace},
 };
 
 const TYPE_NAME: &str = "float";
@@ -60,7 +60,7 @@ pub fn init_type(interpreter: Arc<Interpreter>) {
 #[derive(Debug)]
 pub struct PyFloat {
     ty: Arc<PyType>,
-    vars: Mutex<VarManager>,
+    vars: Mutex<Namespace>,
     value: f64,
 }
 
@@ -68,7 +68,7 @@ impl PyFloat {
     pub fn new(interpreter: Arc<Interpreter>, value: f64) -> Self {
         Self {
             ty: get_type(interpreter),
-            vars: Mutex::new(VarManager::new()),
+            vars: Mutex::new(Namespace::new()),
             value,
         }
     }
@@ -89,7 +89,7 @@ impl PyValue for PyFloat {
         self.ty.clone()
     }
 
-    fn get_var_manager(&self) -> std::sync::MutexGuard<'_, VarManager> {
+    fn get_namespace(&self) -> std::sync::MutexGuard<'_, Namespace> {
         self.vars.lock().unwrap()
     }
 }
