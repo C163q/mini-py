@@ -37,6 +37,10 @@ fn main() -> io::Result<()> {
                 }
             }
 
+            if result.is_ok() {
+                result = interpreter.end_eval().map_err(io::Error::other);
+            }
+
             result
         }
         None => {

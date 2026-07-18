@@ -221,6 +221,19 @@ pub fn eval_line_finished(
     // TODO:
     // interpreter.sem_context.lock().unwrap().indent.expected_indent.is_some() -> SyntaxError:
     // expected indent.
+    if interpreter
+        .sem_context
+        .lock()
+        .unwrap()
+        .indent
+        .expected_indent
+        .is_some()
+    {
+        return Err(error::get_syntax_error(
+            interpreter.clone(),
+            "Expected indented block, but got end of input.".to_string(),
+        ));
+    }
 
     Ok(None)
 }
@@ -320,6 +333,33 @@ fn parse_and_eval_line(
             .unwrap()
             .indent
             .expected_indent = Some(Box::new(if_stmt.value));
+
+        return Ok(None);
+    }
+
+    // elif <condition> :
+    if let Some(elif_stmt) = sif::parse_elif(interpreter.clone(), tokens, idx)
+        && elif_stmt.idx == tokens.len()
+    {
+        interpreter
+            .sem_context
+            .lock()
+            .unwrap()
+            .indent
+            .expected_indent = Some(Box::new(elif_stmt.value));
+
+        return Ok(None);
+    }
+
+    if let Some(else_stmt) = sif::parse_else(interpreter.clone(), tokens, idx)
+        && else_stmt.idx == tokens.len()
+    {
+        interpreter
+            .sem_context
+            .lock()
+            .unwrap()
+            .indent
+            .expected_indent = Some(Box::new(else_stmt.value));
 
         return Ok(None);
     }

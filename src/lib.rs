@@ -141,6 +141,28 @@ impl Interpreter {
         &self.lex_context
     }
 
+    /// Finalizes the evaluation of all of the codes.
+    ///
+    /// This should always be called after evaluating all of the codes, otherwise the block that
+    /// is not closed off by a dedent will never be evaluated.
+    pub fn end_eval(self: Arc<Self>) -> Result<(), InterpreterError> {
+        let output = eval::eval_line_finished(self.clone());
+        let output = match output {
+            Ok(value) => value,
+            Err(err) => {
+                let err_msg = output::output_err_value(self.clone(), err)?;
+                return Err(InterpreterError::new_unhandled(format!(
+                    "Error evaluating line: {}",
+                    err_msg
+                )));
+            }
+        };
+        if let Some(output) = output {
+            let _ = self.output_pystr_if_repl(output);
+        }
+        Ok(())
+    }
+
     /// Looks up a [`PyType`] by name.
     ///
     /// This is similar to [`Interpreter::get_var`], but additionally verifies that the resolved
