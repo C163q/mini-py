@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     error::InterpreterError,
-    eval::ast::Block,
+    eval::basic::Block,
     lexer::{
         indent::{CmpIndent, LineIndent},
         line::Line,

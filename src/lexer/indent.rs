@@ -310,7 +310,7 @@ pub struct IndentHistory {
     ///
     /// `None` — the next line is expected at the same or a shallower level.
     ///
-    /// [`Block`]: crate::eval::ast::Block
+    /// [`Block`]: crate::eval::basic::ast::Block
     pub expected_indent: Option<Box<dyn SetBlock>>,
 }
 

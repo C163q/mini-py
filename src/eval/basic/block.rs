@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
-    eval::{ast::Block, eval_line_finished, eval_line_with_indent},
+    eval::{basic::ast::Block, eval_line_finished, eval_line_with_indent},
     lexer,
     var::PyValue,
 };

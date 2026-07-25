@@ -2,21 +2,29 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
+    eval::{
+        expr::ast::Expr,
+        sem::SemState,
+        stmt::{
+            assign::Assign,
+            ast::{ElifStmt, ElseStmt, IfStmt},
+            swhile::WhileStmt,
+        },
+    },
     lexer::{
         self,
-        indent::{IndentHistory, LineIndent, OwnedLineIndent},
+        indent::LineIndent,
         tokenize::{Token, TokenNode},
     },
     types::{error, tstr::PyStr},
     var::PyValue,
 };
 
-pub mod assign;
-pub mod ast;
-pub mod block;
+pub mod basic;
 pub mod expr;
 pub mod output;
-pub mod sif;
+pub mod sem;
+pub mod stmt;
 
 /// Evaluates an AST node and optionally returns a value.
 ///
@@ -51,101 +59,23 @@ pub trait Eval: Send + Sync {
 /// the interpreter processes the subsequent indented lines. Implementors store the block and
 /// use it when [`Eval::eval`] is called.
 ///
-/// [`Block`]: ast::Block
+/// [`Block`]: basic::ast::Block
 pub trait SetBlock: Eval + Send + Sync {
     /// Attaches `block` as the body of this statement.
-    fn set_block(&mut self, block: ast::Block);
+    fn set_block(&mut self, block: basic::ast::Block);
 }
 
-/// Runtime state passed between successive statements during evaluation.
+/// Attempts to parse `Self` from `tokens` starting at `idx`.
 ///
-/// Currently tracks only whether the most recent `if` condition was true or false, so that a
-/// following `else` branch can decide whether to execute.
-#[derive(Debug, Clone)]
-pub struct SemState {
-    /// `None` — the previous statement was not an `if`.
-    /// `Some(true)` — the previous `if` condition was true (body was executed).
-    /// `Some(false)` — the previous `if` condition was false (body was skipped).
-    pub last_if_result: Option<bool>,
-}
-
-impl Default for SemState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SemState {
-    pub fn new() -> Self {
-        Self {
-            last_if_result: None,
-        }
-    }
-}
-
-/// Persistent evaluation context shared across successive lines.
-///
-/// Holds the indentation history (for block tracking) and the current [`SemState`]
-/// (for inter-statement control flow such as `if`/`else`).
-#[derive(Debug)]
-pub struct SemContext {
-    indent: IndentHistory,
-    state: SemState,
-}
-
-impl Default for SemContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SemContext {
-    pub fn new() -> Self {
-        Self {
-            indent: IndentHistory::new(),
-            state: SemState::new(),
-        }
-    }
-
-    /// Returns a shared reference to the indentation history.
-    pub fn get_indent_history(&self) -> &IndentHistory {
-        &self.indent
-    }
-
-    /// Returns a mutable reference to the indentation history.
-    pub fn get_indent_history_mut(&mut self) -> &mut IndentHistory {
-        &mut self.indent
-    }
-
-    /// Returns the current indentation level if a deeper block is expected on the next line,
-    /// or `None` if no block is pending.
-    pub fn get_last_indent_if_expect(&self) -> Option<LineIndent<'_>> {
-        if self.indent.expected_indent.is_some() {
-            Some(self.indent.stack.current().unwrap_or_default())
-        } else {
-            None
-        }
-    }
-
-    /// Returns the current (innermost) indentation level, defaulting to empty if the stack is empty.
-    pub fn get_last_indent(&self) -> LineIndent<'_> {
-        self.indent.stack.current().unwrap_or_default()
-    }
-
-    /// Returns the full indentation stack as a slice.
-    pub fn get_indent_stack(&self) -> &[OwnedLineIndent] {
-        &self.indent.stack
-    }
-
-    /// Returns a shared reference to the current [`SemState`].
-    pub fn get_sem_state(&self) -> &SemState {
-        &self.state
-    }
-
-    /// Returns a mutable reference to the current [`SemState`].
-    pub fn get_sem_state_mut(&mut self) -> &mut SemState {
-        &mut self.state
-    }
+/// Returns `None` if the token sequence at `idx` does not match `Self`'s grammar, letting the
+/// caller fall through and try a different rule. On success, returns a [`ParseResult`] whose
+/// `idx` points to the first token **not** consumed by the match.
+pub trait Parse: Sized {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<Self>>;
 }
 
 /// The result of a successful parse step.
@@ -205,7 +135,7 @@ pub fn eval_line(
 /// ```
 ///
 /// [`LexContext`]: crate::lexer::LexContext
-/// [`Block`]: ast::Block
+/// [`Block`]: basic::ast::Block
 /// [`SyntaxError`]: crate::types::error::get_syntax_error
 pub fn eval_line_finished(
     interpreter: Arc<Interpreter>,
@@ -225,7 +155,7 @@ pub fn eval_line_finished(
         .sem_context
         .lock()
         .unwrap()
-        .indent
+        .get_indent_history()
         .expected_indent
         .is_some()
     {
@@ -323,7 +253,7 @@ fn parse_and_eval_line(
     }
 
     // if <condition> :
-    if let Some(if_stmt) = sif::parse_if(interpreter.clone(), tokens, idx)
+    if let Some(if_stmt) = IfStmt::parse(interpreter.clone(), tokens, idx)
         && if_stmt.idx == tokens.len()
     {
         // Store the parsed if statement so the next (indented) line can be attached as its body.
@@ -331,41 +261,56 @@ fn parse_and_eval_line(
             .sem_context
             .lock()
             .unwrap()
-            .indent
+            .get_indent_history_mut()
             .expected_indent = Some(Box::new(if_stmt.value));
 
         return Ok(None);
     }
 
     // elif <condition> :
-    if let Some(elif_stmt) = sif::parse_elif(interpreter.clone(), tokens, idx)
+    if let Some(elif_stmt) = ElifStmt::parse(interpreter.clone(), tokens, idx)
         && elif_stmt.idx == tokens.len()
     {
         interpreter
             .sem_context
             .lock()
             .unwrap()
-            .indent
+            .get_indent_history_mut()
             .expected_indent = Some(Box::new(elif_stmt.value));
 
         return Ok(None);
     }
 
-    if let Some(else_stmt) = sif::parse_else(interpreter.clone(), tokens, idx)
+    // else :
+    if let Some(else_stmt) = ElseStmt::parse(interpreter.clone(), tokens, idx)
         && else_stmt.idx == tokens.len()
     {
         interpreter
             .sem_context
             .lock()
             .unwrap()
-            .indent
+            .get_indent_history_mut()
             .expected_indent = Some(Box::new(else_stmt.value));
 
         return Ok(None);
     }
 
+    // while <condition> :
+    if let Some(while_stmt) = WhileStmt::parse(interpreter.clone(), tokens, idx)
+        && while_stmt.idx == tokens.len()
+    {
+        interpreter
+            .sem_context
+            .lock()
+            .unwrap()
+            .get_indent_history_mut()
+            .expected_indent = Some(Box::new(while_stmt.value));
+
+        return Ok(None);
+    }
+
     // <expr>
-    if let Some(expr) = expr::parse_expr(interpreter.clone(), tokens, idx)
+    if let Some(expr) = Expr::parse(interpreter.clone(), tokens, idx)
         && expr.idx == tokens.len()
     {
         // Expressions always produce a value (unwrap is safe here).
@@ -377,7 +322,7 @@ fn parse_and_eval_line(
     }
 
     // <lvalue> = <expr>
-    if let Some(assign) = assign::parse_assign(interpreter.clone(), tokens, idx)
+    if let Some(assign) = Assign::parse(interpreter.clone(), tokens, idx)
         && assign.idx == tokens.len()
     {
         Box::new(assign.value).eval_with_state(interpreter.clone())?;

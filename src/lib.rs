@@ -9,7 +9,7 @@ use std::{
 
 use crate::{
     error::InterpreterError,
-    eval::{SemContext, output},
+    eval::{output, sem::SemContext},
     lexer::LexContext,
     types::{PyType, tstr::PyStr},
     var::{

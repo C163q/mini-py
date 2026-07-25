@@ -3,16 +3,18 @@ use std::{mem, sync::Arc};
 use crate::{
     Interpreter,
     eval::{
-        Eval, ParseResult, SetBlock,
-        ast::{ElifStmt, ElseStmt, IfStmt},
+        Eval, Parse, ParseResult, SetBlock,
+        basic::{self, ast::Block},
+        expr::{self, ast::Expr},
+        stmt::ast::{ElifStmt, ElseStmt, IfStmt},
     },
-    lexer::tokenize::{Keyword, Separator, Token, TokenNode},
+    lexer::tokenize::{Keyword, Separator, TokenNode},
     types::{error, tbool::PyBool},
     var::PyValue,
 };
 
 impl SetBlock for IfStmt {
-    fn set_block(&mut self, block: crate::eval::ast::Block) {
+    fn set_block(&mut self, block: Block) {
         assert!(self.body.is_none(), "Block is already set for this IfStmt");
         self.body = Some(block);
     }
@@ -41,29 +43,36 @@ impl Eval for IfStmt {
     }
 }
 
+impl Parse for IfStmt {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<IfStmt>> {
+        parse_if(interpreter, tokens, idx)
+    }
+}
+
 /// Attempts to parse `if <condition> :` from `tokens` starting at `idx`.
 ///
 /// Returns `None` if the token sequence does not match an `if` header. The returned
 /// [`IfStmt`] has no body yet; the body is attached later via [`SetBlock::set_block`].
-pub fn parse_if(
+fn parse_if(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<IfStmt>> {
-    // idx + 1 is the index of the next token after 'if'
-    if idx + 1 >= tokens.len() {
+    if idx >= tokens.len() {
         return None;
     }
 
-    if tokens[idx].value == Token::Keyword(Keyword::If)
-        && let Some(condition) = super::expr::parse_expr(interpreter.clone(), tokens, idx + 1)
-        && condition.idx < tokens.len()
-        && tokens[condition.idx].value == Token::Separator(Separator::Colon)
+    if let Some(if_kw) = Keyword::parse(interpreter.clone(), tokens, idx)
+        && if_kw.value == Keyword::If
+        && let Some(condition) = Expr::parse(interpreter.clone(), tokens, if_kw.idx)
+        && let Some(colon) = Separator::parse(interpreter.clone(), tokens, condition.idx)
+        && colon.value == Separator::Colon
     {
-        return Some(ParseResult::new(
-            condition.idx + 1,
-            IfStmt::new(condition.value),
-        ));
+        return Some(ParseResult::new(colon.idx, IfStmt::new(condition.value)));
     }
 
     None
@@ -73,8 +82,8 @@ pub fn parse_if(
 /// a potential `else` branch, and executes the body block if the condition is truthy.
 ///
 /// [`SemState`]: crate::eval::SemState
-pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc<dyn PyValue>> {
-    let cond = super::expr::eval_expr(interpreter.clone(), if_stmt.condition)?;
+fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc<dyn PyValue>> {
+    let cond = expr::eval_expr(interpreter.clone(), if_stmt.condition)?;
     let func = cond.get_binding(interpreter.clone(), "__bool__")?;
     let cond = match crate::var::call::call(func, interpreter.clone(), vec![cond])?
         .as_any()
@@ -90,7 +99,7 @@ pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc
     };
 
     if cond {
-        super::block::eval_block(
+        basic::eval_block(
             interpreter.clone(),
             if_stmt.body.expect("IfStmt body is None"),
         )?;
@@ -98,13 +107,18 @@ pub fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc
 
     // Statements in the body may changes the state, so we need to update the last_if_result after
     // executing the body.
-    interpreter.sem_context.lock().unwrap().state.last_if_result = Some(cond);
+    interpreter
+        .sem_context
+        .lock()
+        .unwrap()
+        .get_sem_state_mut()
+        .last_if_result = Some(cond);
 
     Ok(())
 }
 
 impl SetBlock for ElifStmt {
-    fn set_block(&mut self, block: crate::eval::ast::Block) {
+    fn set_block(&mut self, block: Block) {
         assert!(
             self.body.is_none(),
             "Block is already set for this ElifStmt"
@@ -136,11 +150,21 @@ impl Eval for ElifStmt {
     }
 }
 
+impl Parse for ElifStmt {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<ElifStmt>> {
+        parse_elif(interpreter, tokens, idx)
+    }
+}
+
 /// Attempts to parse `elif <condition> :` from `tokens` starting at `idx`.
 ///
 /// Returns `None` if the token sequence does not match an `elif` header. The returned
 /// [`ElifStmt`] has no body yet; the body is attached later via [`SetBlock::set_block`].
-pub fn parse_elif(
+fn parse_elif(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],
     idx: usize,
@@ -150,15 +174,13 @@ pub fn parse_elif(
         return None;
     }
 
-    if tokens[idx].value == Token::Keyword(Keyword::Elif)
-        && let Some(condition) = super::expr::parse_expr(interpreter.clone(), tokens, idx + 1)
-        && condition.idx < tokens.len()
-        && tokens[condition.idx].value == Token::Separator(Separator::Colon)
+    if let Some(elif_kw) = Keyword::parse(interpreter.clone(), tokens, idx)
+        && elif_kw.value == Keyword::Elif
+        && let Some(condition) = Expr::parse(interpreter.clone(), tokens, elif_kw.idx)
+        && let Some(colon) = Separator::parse(interpreter.clone(), tokens, condition.idx)
+        && colon.value == Separator::Colon
     {
-        return Some(ParseResult::new(
-            condition.idx + 1,
-            ElifStmt::new(condition.value),
-        ));
+        return Some(ParseResult::new(colon.idx, ElifStmt::new(condition.value)));
     }
 
     None
@@ -169,11 +191,14 @@ pub fn parse_elif(
 /// if the condition is truthy.
 ///
 /// [`SemState`]: crate::eval::SemState
-pub fn eval_elif(
-    interpreter: Arc<Interpreter>,
-    elif_stmt: ElifStmt,
-) -> Result<(), Arc<dyn PyValue>> {
-    match interpreter.sem_context.lock().unwrap().state.last_if_result {
+fn eval_elif(interpreter: Arc<Interpreter>, elif_stmt: ElifStmt) -> Result<(), Arc<dyn PyValue>> {
+    match interpreter
+        .sem_context
+        .lock()
+        .unwrap()
+        .get_sem_state_mut()
+        .last_if_result
+    {
         Some(true) => {
             // Ingore the condition and body
             Ok(())
@@ -183,7 +208,7 @@ pub fn eval_elif(
             String::from("An elif statement evaluated without a preceding if statement"),
         )),
         Some(false) => {
-            let cond = super::expr::eval_expr(interpreter.clone(), elif_stmt.condition)?;
+            let cond = expr::eval_expr(interpreter.clone(), elif_stmt.condition)?;
             let func = cond.get_binding(interpreter.clone(), "__bool__")?;
             let cond = match crate::var::call::call(func, interpreter.clone(), vec![cond])?
                 .as_any()
@@ -199,13 +224,18 @@ pub fn eval_elif(
             };
 
             if cond {
-                super::block::eval_block(
+                basic::eval_block(
                     interpreter.clone(),
                     elif_stmt.body.expect("ElifStmt body is None"),
                 )?;
             }
 
-            interpreter.sem_context.lock().unwrap().state.last_if_result = Some(cond);
+            interpreter
+                .sem_context
+                .lock()
+                .unwrap()
+                .get_sem_state_mut()
+                .last_if_result = Some(cond);
 
             Ok(())
         }
@@ -213,7 +243,7 @@ pub fn eval_elif(
 }
 
 impl SetBlock for ElseStmt {
-    fn set_block(&mut self, block: crate::eval::ast::Block) {
+    fn set_block(&mut self, block: Block) {
         assert!(
             self.body.is_none(),
             "Block is already set for this ElseStmt"
@@ -231,12 +261,22 @@ impl Eval for ElseStmt {
     }
 }
 
+impl Parse for ElseStmt {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<ElseStmt>> {
+        parse_else(interpreter, tokens, idx)
+    }
+}
+
 /// Attempts to parse `else :` from `tokens` starting at `idx`.
 ///
 /// Returns `None` if the token sequence does not match an `else` header. The returned
 /// [`ElseStmt`] has no body yet; the body is attached later via [`SetBlock::set_block`].
-pub fn parse_else(
-    _interpreter: Arc<Interpreter>,
+fn parse_else(
+    interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<ElseStmt>> {
@@ -245,10 +285,12 @@ pub fn parse_else(
         return None;
     }
 
-    if tokens[idx].value == Token::Keyword(Keyword::Else)
-        && tokens[idx + 1].value == Token::Separator(Separator::Colon)
+    if let Some(else_kw) = Keyword::parse(interpreter.clone(), tokens, idx)
+        && else_kw.value == Keyword::Else
+        && let Some(colon) = Separator::parse(interpreter.clone(), tokens, else_kw.idx)
+        && colon.value == Separator::Colon
     {
-        return Some(ParseResult::new(idx + 2, ElseStmt::new()));
+        return Some(ParseResult::new(colon.idx, ElseStmt::new()));
     }
 
     None
@@ -256,11 +298,13 @@ pub fn parse_else(
 
 /// Evaluates an [`ElseStmt`]: executes the body block if the last evaluated `if` condition was
 /// false.
-pub fn eval_else(
-    interpreter: Arc<Interpreter>,
-    else_stmt: ElseStmt,
-) -> Result<(), Arc<dyn PyValue>> {
-    let last_cond = interpreter.sem_context.lock().unwrap().state.last_if_result;
+fn eval_else(interpreter: Arc<Interpreter>, else_stmt: ElseStmt) -> Result<(), Arc<dyn PyValue>> {
+    let last_cond = interpreter
+        .sem_context
+        .lock()
+        .unwrap()
+        .get_sem_state()
+        .last_if_result;
     let last_cond = match last_cond {
         Some(cond) => cond,
         None => {
@@ -272,7 +316,7 @@ pub fn eval_else(
     };
 
     if !last_cond {
-        super::block::eval_block(
+        basic::eval_block(
             interpreter.clone(),
             else_stmt.body.expect("ElseStmt body is None"),
         )?;

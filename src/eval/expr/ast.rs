@@ -4,130 +4,9 @@ use num_bigint::BigInt;
 
 use crate::{
     Interpreter,
-    lexer::{
-        indent::{LineIndent, OwnedLineIndent},
-        line::Line,
-    },
+    eval::basic::ast::LValue,
     types::{float::PyFloat, int::PyInt},
 };
-
-/// An `else` statement whose body may not yet have been parsed.
-///
-/// When first constructed the body [`Block`] is unknown. The body is supplied later via
-/// [`SetBlock::set_block`] once the indented lines have been collected.
-///
-/// [`SetBlock::set_block`]: crate::eval::SetBlock::set_block
-#[derive(Debug, Clone)]
-pub struct ElseStmt {
-    /// `None` until the body block has been parsed and attached.
-    pub body: Option<Block>,
-}
-
-impl ElseStmt {
-    pub fn new() -> Self {
-        Self { body: None }
-    }
-}
-
-impl Default for ElseStmt {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// An `elif` statement whose body may not yet have been parsed.
-///
-/// When first constructed only the condition is known. The body [`Block`] is supplied later
-/// via [`SetBlock::set_block`] once the indented lines have been collected.
-///
-/// [`SetBlock::set_block`]: crate::eval::SetBlock::set_block
-#[derive(Debug, Clone)]
-pub struct ElifStmt {
-    pub condition: Expr,
-    /// `None` until the body block has been parsed and attached.
-    pub body: Option<Block>,
-}
-
-impl ElifStmt {
-    pub fn new(condition: Expr) -> Self {
-        Self {
-            condition,
-            body: None,
-        }
-    }
-}
-
-/// An `if` statement whose body may not yet have been parsed.
-///
-/// When first constructed only the condition is known. The body [`Block`] is supplied later
-/// via [`SetBlock::set_block`] once the indented lines have been collected.
-///
-/// [`SetBlock::set_block`]: crate::eval::SetBlock::set_block
-#[derive(Debug, Clone)]
-pub struct IfStmt {
-    pub condition: Expr,
-    /// `None` until the body block has been parsed and attached.
-    pub body: Option<Block>,
-}
-
-impl IfStmt {
-    pub fn new(condition: Expr) -> Self {
-        Self {
-            condition,
-            body: None,
-        }
-    }
-}
-
-/// A sequence of lines that form the body of a compound statement (e.g. `if`).
-///
-/// All lines share the same `base_indent`. The first line's indentation must equal
-/// `base_indent`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Block {
-    pub base_indent: OwnedLineIndent,
-    pub lines: Vec<Line>,
-}
-
-impl Block {
-    pub fn new(base_indent: OwnedLineIndent, lines: Vec<Line>) -> Self {
-        assert!(!lines.is_empty(), "Block must have at least one line");
-        assert!(
-            lines[0].indent == base_indent,
-            "First line of block must have the same indent as the block"
-        );
-        Self { base_indent, lines }
-    }
-
-    pub fn get_indent(&self) -> LineIndent<'_> {
-        self.base_indent.as_slice()
-    }
-}
-
-/// An assignment statement: `<lvalue> = <expr>`.
-#[derive(Debug, Clone)]
-pub struct Assign {
-    pub target: LValue,
-    pub value: Expr,
-}
-
-impl Assign {
-    pub fn new(target: LValue, value: Expr) -> Self {
-        Self { target, value }
-    }
-}
-
-/// An assignable target (currently only a bare identifier).
-#[derive(Debug, Clone)]
-pub struct LValue {
-    pub name: String,
-}
-
-impl LValue {
-    pub fn new(name: String) -> Self {
-        Self { name }
-    }
-}
 
 /// The top-level expression node, wrapping the operator-precedence hierarchy.
 ///
@@ -646,3 +525,6 @@ impl Number {
         Self::Float(PyFloat::new(interpreter, num))
     }
 }
+
+/// A `None` literal.
+pub struct NoneExpr;
