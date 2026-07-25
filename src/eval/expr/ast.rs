@@ -55,6 +55,8 @@ impl_expr!(
     UnaryExpr,
     new_pow,
     PowExpr,
+    new_access,
+    AccessExpr,
     new_primary,
     PrimaryExpr,
     new_number,
@@ -103,6 +105,10 @@ impl LOrExpr {
 
     pub fn new_pow(expr: PowExpr) -> Self {
         Self::And(LAndExpr::new_pow(expr))
+    }
+
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::And(LAndExpr::new_access(access))
     }
 
     pub fn new_primary(expr: PrimaryExpr) -> Self {
@@ -154,6 +160,10 @@ impl LAndExpr {
         Self::Not(LNotExpr::new_pow(expr))
     }
 
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Not(LNotExpr::new_access(access))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Not(LNotExpr::new_primary(expr))
     }
@@ -197,6 +207,10 @@ impl LNotExpr {
 
     pub fn new_pow(expr: PowExpr) -> Self {
         Self::Eq(EqExpr::new_pow(expr))
+    }
+
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Eq(EqExpr::new_access(access))
     }
 
     pub fn new_primary(expr: PrimaryExpr) -> Self {
@@ -255,6 +269,10 @@ impl EqExpr {
         Self::Rel(RelExpr::new_pow(expr))
     }
 
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Rel(RelExpr::new_access(access))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Rel(RelExpr::new_primary(expr))
     }
@@ -309,6 +327,10 @@ impl RelExpr {
         Self::Add(AddExpr::new_pow(expr))
     }
 
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Add(AddExpr::new_access(access))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Add(AddExpr::new_primary(expr))
     }
@@ -357,6 +379,10 @@ impl AddExpr {
         Self::Mul(MulExpr::new_pow(expr))
     }
 
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Mul(MulExpr::new_access(access))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Mul(MulExpr::new_primary(expr))
     }
@@ -403,6 +429,10 @@ impl MulExpr {
         Self::Unary(UnaryExpr::new_pow(expr))
     }
 
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Unary(UnaryExpr::new_access(access))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Unary(UnaryExpr::new_primary(expr))
     }
@@ -440,6 +470,10 @@ impl UnaryExpr {
         Self::Pow(expr)
     }
 
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Pow(PowExpr::new_access(access))
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
         Self::Pow(PowExpr::new_primary(expr))
     }
@@ -453,22 +487,74 @@ impl UnaryExpr {
 #[derive(Debug, Clone)]
 pub enum PowExpr {
     Expr {
-        left: Box<PrimaryExpr>,
+        left: Box<AccessExpr>,
         right: Box<PowExpr>,
     },
-    Primary(PrimaryExpr),
+    Access(AccessExpr),
 }
 
 impl PowExpr {
-    pub fn new_pow(left: PrimaryExpr, right: PowExpr) -> Self {
+    pub fn new_pow(left: AccessExpr, right: PowExpr) -> Self {
         Self::Expr {
             left: Box::new(left),
             right: Box::new(right),
         }
     }
 
+    pub fn new_access(access: AccessExpr) -> Self {
+        Self::Access(access)
+    }
+
     pub fn new_primary(expr: PrimaryExpr) -> Self {
-        Self::Primary(expr)
+        Self::Access(AccessExpr::new_primary(expr))
+    }
+
+    pub fn new_number(num: Number) -> Self {
+        Self::Access(AccessExpr::new_number(num))
+    }
+}
+
+/// Function params to call: <param1>, <param2>, ...
+#[derive(Debug, Clone)]
+pub struct FuncRParams {
+    pub positional: Vec<Expr>,
+}
+
+impl FuncRParams {
+    pub fn new(positional: Vec<Expr>) -> Self {
+        Self { positional }
+    }
+}
+
+/// Function call expression: <func>(<params>)
+#[derive(Debug, Clone)]
+pub struct FuncCallExpr {
+    pub func: Box<PrimaryExpr>,
+    pub params: FuncRParams,
+}
+
+impl FuncCallExpr {
+    pub fn new(func: PrimaryExpr, params: FuncRParams) -> Self {
+        Self {
+            func: Box::new(func),
+            params,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AccessExpr {
+    Call(FuncCallExpr),
+    Primary(PrimaryExpr),
+}
+
+impl AccessExpr {
+    pub fn new_call(func_call: FuncCallExpr) -> Self {
+        Self::Call(func_call)
+    }
+
+    pub fn new_primary(primary: PrimaryExpr) -> Self {
+        Self::Primary(primary)
     }
 
     pub fn new_number(num: Number) -> Self {

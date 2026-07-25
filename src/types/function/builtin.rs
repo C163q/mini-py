@@ -19,6 +19,7 @@ pub fn register_print(interpreter: Arc<Interpreter>) -> Result<(), Arc<dyn PyVal
             let str = output::output_value(interpreter.clone(), value)?;
             print!("{}", str);
         }
+        println!();
         Ok(Arc::new(PyNone::new(interpreter)))
     }
 

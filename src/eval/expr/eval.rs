@@ -7,11 +7,11 @@ use std::sync::Arc;
 use crate::{
     Interpreter,
     eval::expr::ast::{
-        AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr, MulOp, Number,
-        PowExpr, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
+        AccessExpr, AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr,
+        MulOp, Number, PowExpr, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
     },
     types::{error, none::PyNone, tbool::PyBool, tstr::PyStr},
-    var::PyValue,
+    var::{PyValue, call},
 };
 
 pub fn eval_number(
@@ -37,6 +37,25 @@ pub fn eval_primary_expr(
     }
 }
 
+pub fn eval_access_expr(
+    interpreter: Arc<Interpreter>,
+    expr: AccessExpr,
+) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
+    match expr {
+        AccessExpr::Primary(expr) => eval_primary_expr(interpreter, expr),
+        AccessExpr::Call(call) => {
+            let left_value = eval_primary_expr(interpreter.clone(), *call.func)?;
+            let right_values = call
+                .params
+                .positional
+                .into_iter()
+                .map(|param| eval_expr(interpreter.clone(), param))
+                .collect::<Result<Vec<_>, _>>()?;
+            call::call(left_value, interpreter, right_values)
+        }
+    }
+}
+
 macro_rules! eval_binary {
     ($interpreter:ident, $lhs:expr, $eval_lhs:ident, $rhs:expr, $eval_rhs:ident, $func:literal) => {{
         let lhs = $eval_lhs($interpreter.clone(), $lhs)?;
@@ -51,12 +70,12 @@ pub fn eval_pow_expr(
     expr: PowExpr,
 ) -> Result<Arc<dyn PyValue>, Arc<dyn PyValue>> {
     match expr {
-        PowExpr::Primary(expr) => eval_primary_expr(interpreter, expr),
+        PowExpr::Access(expr) => eval_access_expr(interpreter, expr),
         PowExpr::Expr { left, right } => {
             eval_binary!(
                 interpreter,
                 *left,
-                eval_primary_expr,
+                eval_access_expr,
                 *right,
                 eval_pow_expr,
                 "__pow__"

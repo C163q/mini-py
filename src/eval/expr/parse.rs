@@ -12,8 +12,9 @@ use crate::{
         Parse, ParseResult,
         basic::ast::LValue,
         expr::ast::{
-            AddExpr, AddOp, EqExpr, EqOp, Expr, LAndExpr, LNotExpr, LOrExpr, MulExpr, MulOp,
-            NoneExpr, Number, PowExpr, PrimaryExpr, RelExpr, RelOp, UnaryExpr, UnaryOp,
+            AccessExpr, AddExpr, AddOp, EqExpr, EqOp, Expr, FuncCallExpr, FuncRParams, LAndExpr,
+            LNotExpr, LOrExpr, MulExpr, MulOp, NoneExpr, Number, PowExpr, PrimaryExpr, RelExpr,
+            RelOp, UnaryExpr, UnaryOp,
         },
     },
     lexer::tokenize::{Keyword, Operator, Separator, Token, TokenNode},
@@ -49,16 +50,6 @@ impl Parse for String {
     }
 }
 
-impl Parse for PowExpr {
-    fn parse(
-        interpreter: Arc<Interpreter>,
-        tokens: &[TokenNode],
-        idx: usize,
-    ) -> Option<ParseResult<Self>> {
-        parse_pow_expr(interpreter, tokens, idx)
-    }
-}
-
 impl Parse for PrimaryExpr {
     fn parse(
         interpreter: Arc<Interpreter>,
@@ -66,6 +57,46 @@ impl Parse for PrimaryExpr {
         idx: usize,
     ) -> Option<ParseResult<Self>> {
         parse_primary_expr(interpreter, tokens, idx)
+    }
+}
+
+impl Parse for FuncRParams {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<Self>> {
+        parse_func_rparams(interpreter, tokens, idx)
+    }
+}
+
+impl Parse for FuncCallExpr {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<Self>> {
+        parse_func_call_expr(interpreter, tokens, idx)
+    }
+}
+
+impl Parse for AccessExpr {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<Self>> {
+        parse_access_expr(interpreter, tokens, idx)
+    }
+}
+
+impl Parse for PowExpr {
+    fn parse(
+        interpreter: Arc<Interpreter>,
+        tokens: &[TokenNode],
+        idx: usize,
+    ) -> Option<ParseResult<Self>> {
+        parse_pow_expr(interpreter, tokens, idx)
     }
 }
 
@@ -314,6 +345,102 @@ fn parse_primary_expr(
     None
 }
 
+fn parse_func_rparams(
+    interpreter: Arc<Interpreter>,
+    tokens: &[TokenNode],
+    idx: usize,
+) -> Option<ParseResult<FuncRParams>> {
+    let mut params = Vec::new();
+    let mut parse_idx = idx;
+
+    loop {
+        if parse_idx >= tokens.len() {
+            break;
+        }
+
+        if let Some(expr) = Expr::parse(interpreter.clone(), tokens, parse_idx) {
+            params.push(expr.value);
+            parse_idx = expr.idx;
+        } else if parse_idx == idx {
+            // In this case, the input is `f()`. Comma is **not** expected, so we can return an
+            // empty parameter list.
+            break;
+        } else {
+            // The input is `f(a, b)` or `f(a, b,)`. In either case, we expect a comma after the
+            // last parameter.
+            if let Some(comma) = Separator::parse(interpreter.clone(), tokens, parse_idx)
+                && comma.value == Separator::Comma
+            {
+                parse_idx = comma.idx;
+            }
+            // The last tokens were not a valid expression, break here.
+            break;
+        }
+
+        if let Some(comma) = Separator::parse(interpreter.clone(), tokens, parse_idx)
+            && comma.value == Separator::Comma
+        {
+            parse_idx = comma.idx;
+        } else {
+            // No comma means the parameter list has ended
+            break;
+        }
+    }
+
+    Some(ParseResult::new(parse_idx, FuncRParams::new(params)))
+}
+
+fn parse_func_call_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[TokenNode],
+    idx: usize,
+) -> Option<ParseResult<FuncCallExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let Some(primary) = PrimaryExpr::parse(interpreter.clone(), tokens, idx)
+        && let Some(left_paren) = Separator::parse(interpreter.clone(), tokens, primary.idx)
+        && left_paren.value == Separator::LeftParen
+        && let Some(rparams) = FuncRParams::parse(interpreter.clone(), tokens, left_paren.idx)
+        && let Some(right_paren) = Separator::parse(interpreter.clone(), tokens, rparams.idx)
+        && right_paren.value == Separator::RightParen
+    {
+        return Some(ParseResult::new(
+            right_paren.idx,
+            FuncCallExpr::new(primary.value, rparams.value),
+        ));
+    }
+
+    None
+}
+
+fn parse_access_expr(
+    interpreter: Arc<Interpreter>,
+    tokens: &[TokenNode],
+    idx: usize,
+) -> Option<ParseResult<AccessExpr>> {
+    if idx >= tokens.len() {
+        return None;
+    }
+
+    if let Some(func_call) = FuncCallExpr::parse(interpreter.clone(), tokens, idx) {
+        return Some(ParseResult::new(
+            func_call.idx,
+            AccessExpr::new_call(func_call.value),
+        ));
+    }
+
+    if let Some(primary) = PrimaryExpr::parse(interpreter.clone(), tokens, idx) {
+        return Some(ParseResult::new(
+            primary.idx,
+            AccessExpr::new_primary(primary.value),
+        ));
+    }
+
+    None
+}
+
 fn parse_pow_expr(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],
@@ -323,20 +450,20 @@ fn parse_pow_expr(
         return None;
     }
 
-    if let Some(primary) = PrimaryExpr::parse(interpreter.clone(), tokens, idx) {
-        if primary.idx + 1 < tokens.len()
-            && tokens[primary.idx].value == Token::Operator(Operator::Pow)
-            && let Some(right) = PowExpr::parse(interpreter.clone(), tokens, primary.idx + 1)
+    if let Some(access) = AccessExpr::parse(interpreter.clone(), tokens, idx) {
+        if access.idx + 1 < tokens.len()
+            && tokens[access.idx].value == Token::Operator(Operator::Pow)
+            && let Some(right) = PowExpr::parse(interpreter.clone(), tokens, access.idx + 1)
         {
             return Some(ParseResult::new(
                 right.idx,
-                PowExpr::new_pow(primary.value, right.value),
+                PowExpr::new_pow(access.value, right.value),
             ));
         }
 
         return Some(ParseResult::new(
-            primary.idx,
-            PowExpr::new_primary(primary.value),
+            access.idx,
+            PowExpr::new_access(access.value),
         ));
     }
 
