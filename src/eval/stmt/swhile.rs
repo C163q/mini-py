@@ -1,38 +1,18 @@
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use crate::{
     Interpreter,
+    error::{PyControlFlow, PyError},
     eval::{
         Eval, Parse, ParseResult, SetBlock,
         basic::{self, ast::Block},
         expr::{self, ast::Expr},
+        stmt::ast::WhileStmt,
     },
     lexer::tokenize::{Keyword, Separator, TokenNode},
     types::{error, tbool::PyBool},
     var::PyValue,
 };
-
-/// An `while` statement whose body may not yet have been parsed.
-///
-/// When first constructed only the condition is known. The body [`Block`] is supplied later
-/// via [`SetBlock::set_block`] once the indented lines have been collected.
-///
-/// [`SetBlock::set_block`]: crate::eval::SetBlock::set_block
-#[derive(Debug, Clone)]
-pub struct WhileStmt {
-    pub condition: Expr,
-    /// `None` until the body block has been parsed and attached.
-    pub body: Option<Block>,
-}
-
-impl WhileStmt {
-    pub fn new(condition: Expr) -> Self {
-        Self {
-            condition,
-            body: None,
-        }
-    }
-}
 
 impl SetBlock for WhileStmt {
     fn set_block(&mut self, block: Block) {
@@ -48,8 +28,32 @@ impl Eval for WhileStmt {
     fn eval(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
         eval_while(interpreter, *self).map(|_| None)
+    }
+
+    fn eval_with_state(
+        self: Box<Self>,
+        interpreter: Arc<Interpreter>,
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
+        let last_in_loop = mem::replace(
+            &mut interpreter
+                .sem_context
+                .lock()
+                .unwrap()
+                .get_sem_state_mut()
+                .in_loop,
+            true,
+        );
+
+        let result = self.eval(interpreter.clone());
+        {
+            let mut lock = interpreter.sem_context.lock().unwrap();
+            let state = lock.get_sem_state_mut();
+            state.reset();
+            state.in_loop = last_in_loop;
+        }
+        result
     }
 }
 
@@ -65,15 +69,14 @@ impl Parse for WhileStmt {
 
 /// Attempts to parse `while <condition> :` from `tokens` starting at `idx`.
 ///
-/// Returns `None` if the token sequence does not match an `while` header. The returned
+/// Returns `None` if the token sequence does not match a `while` header. The returned
 /// [`WhileStmt`] has no body yet; the body is attached later via [`SetBlock::set_block`].
 fn parse_while(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<WhileStmt>> {
-    // idx + 1 is the index of the next token after 'if'
-    if idx + 1 >= tokens.len() {
+    if idx >= tokens.len() {
         return None;
     }
 
@@ -90,10 +93,7 @@ fn parse_while(
 }
 
 /// Evaluates an [`WhileStmt`]: evaluates the condition.
-fn eval_while(
-    interpreter: Arc<Interpreter>,
-    while_stmt: WhileStmt,
-) -> Result<(), Arc<dyn PyValue>> {
+fn eval_while(interpreter: Arc<Interpreter>, while_stmt: WhileStmt) -> Result<(), PyError> {
     loop {
         let cond = expr::eval_expr(interpreter.clone(), while_stmt.condition.clone())?;
         let func = cond.get_binding(interpreter.clone(), "__bool__")?;
@@ -105,7 +105,8 @@ fn eval_while(
                 return Err(error::get_type_error(
                     interpreter,
                     "__bool__ did not return a boolean".to_string(),
-                ));
+                )
+                .into());
             }
             Some(b) => b.get_value(),
         };
@@ -114,10 +115,18 @@ fn eval_while(
             break;
         }
 
-        basic::eval_block(
+        if let Err(e) = basic::eval_block(
             interpreter.clone(),
             while_stmt.body.clone().expect("WhileStmt body is None"),
-        )?;
+        ) {
+            match e {
+                PyError::ControlFlow(cf) => match cf {
+                    PyControlFlow::Break => break,
+                    PyControlFlow::Continue => continue,
+                },
+                _ => return Err(e),
+            }
+        }
     }
 
     Ok(())

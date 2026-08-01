@@ -2,13 +2,12 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
+    error::PyError,
     eval::{
         expr::ast::Expr,
-        sem::SemState,
         stmt::{
             assign::Assign,
-            ast::{ElifStmt, ElseStmt, IfStmt},
-            swhile::WhileStmt,
+            ast::{BreakStmt, ContinueStmt, ElifStmt, ElseStmt, IfStmt, WhileStmt},
         },
     },
     lexer::{
@@ -34,7 +33,7 @@ pub trait Eval: Send + Sync {
     fn eval(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>>;
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError>;
 
     /// Evaluates the node and resets [`SemState`] afterwards, unless the node itself wrote new
     /// state (e.g. an `if` statement records its condition result for a potential `else` branch).
@@ -46,9 +45,14 @@ pub trait Eval: Send + Sync {
     fn eval_with_state(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
         let result = self.eval(interpreter.clone());
-        *interpreter.sem_context.lock().unwrap().get_sem_state_mut() = SemState::default();
+        interpreter
+            .sem_context
+            .lock()
+            .unwrap()
+            .get_sem_state_mut()
+            .reset();
         result
     }
 }
@@ -102,7 +106,14 @@ pub fn eval_line(
     interpreter: Arc<Interpreter>,
     line: &str,
 ) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
-    eval_line_with_indent(interpreter, line, LineIndent::new(), lexer::lex_raw_line)
+    eval_line_with_indent(interpreter, line, LineIndent::new(), lexer::lex_raw_line).map_err(|e| {
+        match e {
+            PyError::Exception(err) => err,
+            PyError::ControlFlow(cf) => {
+                panic!("Control flows should not be handled here: {:?}", cf)
+            }
+        }
+    })
 }
 
 /// Finalizes and evaluates any block still buffered in the [`LexContext`], for use once the
@@ -140,6 +151,15 @@ pub fn eval_line(
 pub fn eval_line_finished(
     interpreter: Arc<Interpreter>,
 ) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
+    eval_line_finished_block(interpreter).map_err(|e| match e {
+        PyError::Exception(err) => err,
+        PyError::ControlFlow(cf) => panic!("Control flows should not be handled here: {:?}", cf),
+    })
+}
+
+/// [`eval_line_finished`] is called by interpreter and [`eval_line_finished_block`] is called
+/// by internal implementions that requires to handle control flows.
+fn eval_line_finished_block(interpreter: Arc<Interpreter>) -> Result<Option<PyStr>, PyError> {
     if let Ok(block) = interpreter
         .get_lex_context()
         .get_and_clear_block_context()
@@ -162,7 +182,8 @@ pub fn eval_line_finished(
         return Err(error::get_syntax_error(
             interpreter.clone(),
             "Expected indented block, but got end of input.".to_string(),
-        ));
+        )
+        .into());
     }
 
     Ok(None)
@@ -175,8 +196,8 @@ fn eval_line_with_indent<T>(
     line: T,
     indent: LineIndent,
     lexer: LexerFn<T>,
-) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
-    let lex_tokens = lexer(interpreter.clone(), line, indent)?;
+) -> Result<Option<PyStr>, PyError> {
+    let lex_tokens = lexer(interpreter.clone(), line, indent).map_err(PyError::new_exception)?;
 
     if let Some(block) = lex_tokens.block {
         eval_line_from_token(
@@ -195,11 +216,23 @@ fn eval_line_with_indent<T>(
 fn eval_line_from_token(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],
-) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
+) -> Result<Option<PyStr>, PyError> {
     if tokens.is_empty() {
         return Ok(None);
     }
-    parse_and_eval_line(interpreter, tokens)
+    parse_and_eval_line(interpreter.clone(), tokens).map_err(|e| match e {
+        PyError::ControlFlow(cf)
+            if !interpreter
+                .sem_context
+                .lock()
+                .unwrap()
+                .get_sem_state()
+                .in_loop =>
+        {
+            error::get_syntax_error(interpreter, format!("'{}' not properly in loop", cf)).into()
+        }
+        _ => e,
+    })
 }
 
 /// Parses `tokens` as a statement or expression and evaluates it.
@@ -207,10 +240,12 @@ fn eval_line_from_token(
 /// Returns the string representation of the result for REPL display, or `None` for
 /// statements. Side effects (variable assignments, etc.) are applied to the interpreter
 /// regardless of the return value.
+///
+/// Never call this function directly. Call [`eval_line_from_token`], which will apply more checks.
 fn parse_and_eval_line(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],
-) -> Result<Option<PyStr>, Arc<dyn PyValue>> {
+) -> Result<Option<PyStr>, PyError> {
     let idx = 0;
 
     {
@@ -237,7 +272,8 @@ fn parse_and_eval_line(
                         return Ok(None);
                     }
                     Some(value) => {
-                        let output = output::output_value(interpreter.clone(), value)?;
+                        let output = output::output_value(interpreter.clone(), value)
+                            .map_err(PyError::new_exception)?;
                         return Ok(Some(output));
                     }
                 }
@@ -245,11 +281,24 @@ fn parse_and_eval_line(
             }
 
             drop(sem_context);
-            return Err(error::get_syntax_error(
-                interpreter,
-                "Unexpected indent.".to_string(),
-            ));
+            return Err(
+                error::get_syntax_error(interpreter, "Unexpected indent.".to_string()).into(),
+            );
         }
+    }
+
+    // break
+    if let Some(break_stmt) = BreakStmt::parse(interpreter.clone(), tokens, idx)
+        && break_stmt.idx == tokens.len()
+    {
+        return Err(PyError::new_break());
+    }
+
+    // continue
+    if let Some(continue_stmt) = ContinueStmt::parse(interpreter.clone(), tokens, idx)
+        && continue_stmt.idx == tokens.len()
+    {
+        return Err(PyError::new_continue());
     }
 
     // if <condition> :
@@ -317,7 +366,8 @@ fn parse_and_eval_line(
         let value = Box::new(expr.value)
             .eval_with_state(interpreter.clone())?
             .unwrap();
-        let output = output::output_value(interpreter.clone(), value)?;
+        let output =
+            output::output_value(interpreter.clone(), value).map_err(PyError::new_exception)?;
         return Ok(Some(output));
     }
 
@@ -329,8 +379,5 @@ fn parse_and_eval_line(
         return Ok(None);
     }
 
-    Err(error::get_syntax_error(
-        interpreter,
-        "Invalid syntax".to_string(),
-    ))
+    Err(error::get_syntax_error(interpreter, "Invalid syntax".to_string()).into())
 }

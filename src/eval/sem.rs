@@ -10,6 +10,7 @@ pub struct SemState {
     /// `Some(true)` — the previous `if` condition was true (body was executed).
     /// `Some(false)` — the previous `if` condition was false (body was skipped).
     pub last_if_result: Option<bool>,
+    pub in_loop: bool,
 }
 
 impl Default for SemState {
@@ -22,7 +23,13 @@ impl SemState {
     pub fn new() -> Self {
         Self {
             last_if_result: None,
+            in_loop: false,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.last_if_result = None;
+        // self.in_loop = self.in_loop;
     }
 }
 

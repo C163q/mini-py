@@ -137,7 +137,7 @@ impl Interpreter {
     }
 
     /// Returns the lexical context of the interpreter.
-    pub fn get_lex_context(&self) -> &LexContext {
+    fn get_lex_context(&self) -> &LexContext {
         &self.lex_context
     }
 

@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
+    error::PyError,
     eval::{Eval, expr::ast::Expr},
     var::PyValue,
 };
@@ -27,8 +28,10 @@ impl Eval for Expr {
     fn eval(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
-        eval::eval_expr(interpreter, *self).map(Some)
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
+        eval::eval_expr(interpreter, *self)
+            .map(Some)
+            .map_err(PyError::new_exception)
     }
 }
 

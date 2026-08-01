@@ -67,3 +67,31 @@ impl IfStmt {
         }
     }
 }
+
+/// An `while` statement whose body may not yet have been parsed.
+///
+/// When first constructed only the condition is known. The body [`Block`] is supplied later
+/// via [`SetBlock::set_block`] once the indented lines have been collected.
+///
+/// [`SetBlock::set_block`]: crate::eval::SetBlock::set_block
+#[derive(Debug, Clone)]
+pub struct WhileStmt {
+    pub condition: Expr,
+    /// `None` until the body block has been parsed and attached.
+    pub body: Option<Block>,
+}
+
+impl WhileStmt {
+    pub fn new(condition: Expr) -> Self {
+        Self {
+            condition,
+            body: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ContinueStmt;
+
+#[derive(Debug, Clone, Copy)]
+pub struct BreakStmt;

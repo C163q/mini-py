@@ -1,6 +1,6 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, sync::Arc};
 
-use crate::lexer::line::Line;
+use crate::{lexer::line::Line, var::PyValue};
 
 /// The error type for the interpreter.
 ///
@@ -51,3 +51,67 @@ impl Display for InterpreterError {
 }
 
 impl Error for InterpreterError {}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PyControlFlow {
+    Break,
+    Continue,
+}
+
+impl Display for PyControlFlow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Break => write!(f, "break"),
+            Self::Continue => write!(f, "continue"),
+        }
+    }
+}
+
+/// TODO: add InterpreterError to PyError
+#[derive(Debug, Clone)]
+pub enum PyError {
+    ControlFlow(PyControlFlow),
+    Exception(Arc<dyn PyValue>),
+}
+
+impl PyError {
+    pub fn new_control_flow(control_flow: PyControlFlow) -> Self {
+        Self::ControlFlow(control_flow)
+    }
+
+    pub fn new_break() -> Self {
+        Self::ControlFlow(PyControlFlow::Break)
+    }
+
+    pub fn new_continue() -> Self {
+        Self::ControlFlow(PyControlFlow::Continue)
+    }
+
+    pub fn new_exception(exception: Arc<dyn PyValue>) -> Self {
+        Self::Exception(exception)
+    }
+
+    pub fn into_exception(self) -> Option<Arc<dyn PyValue>> {
+        match self {
+            Self::Exception(v) => Some(v),
+            Self::ControlFlow(_) => None,
+        }
+    }
+}
+
+impl Display for PyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ControlFlow(control_flow) => write!(f, "Control flow: {:?}", control_flow),
+            Self::Exception(exception) => write!(f, "Exception: {:?}", exception),
+        }
+    }
+}
+
+impl Error for PyError {}
+
+impl From<Arc<dyn PyValue>> for PyError {
+    fn from(exception: Arc<dyn PyValue>) -> Self {
+        Self::new_exception(exception)
+    }
+}

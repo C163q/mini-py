@@ -2,6 +2,7 @@ use std::{mem, sync::Arc};
 
 use crate::{
     Interpreter,
+    error::PyError,
     eval::{
         Eval, Parse, ParseResult, SetBlock,
         basic::{self, ast::Block},
@@ -24,20 +25,21 @@ impl Eval for IfStmt {
     fn eval(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
         eval_if(interpreter, *self).map(|_| None)
     }
 
     fn eval_with_state(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
         let result = self.eval(interpreter.clone());
         {
             let mut lock = interpreter.sem_context.lock().unwrap();
             let state = lock.get_sem_state_mut();
-            let last_state = mem::take(state);
-            state.last_if_result = last_state.last_if_result;
+            let if_result = state.last_if_result;
+            state.reset();
+            state.last_if_result = if_result;
         }
         result
     }
@@ -82,10 +84,14 @@ fn parse_if(
 /// a potential `else` branch, and executes the body block if the condition is truthy.
 ///
 /// [`SemState`]: crate::eval::SemState
-fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc<dyn PyValue>> {
-    let cond = expr::eval_expr(interpreter.clone(), if_stmt.condition)?;
-    let func = cond.get_binding(interpreter.clone(), "__bool__")?;
-    let cond = match crate::var::call::call(func, interpreter.clone(), vec![cond])?
+fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), PyError> {
+    let cond =
+        expr::eval_expr(interpreter.clone(), if_stmt.condition).map_err(PyError::new_exception)?;
+    let func = cond
+        .get_binding(interpreter.clone(), "__bool__")
+        .map_err(PyError::new_exception)?;
+    let cond = match crate::var::call::call(func, interpreter.clone(), vec![cond])
+        .map_err(PyError::new_exception)?
         .as_any()
         .downcast_ref::<PyBool>()
     {
@@ -93,7 +99,8 @@ fn eval_if(interpreter: Arc<Interpreter>, if_stmt: IfStmt) -> Result<(), Arc<dyn
             return Err(error::get_type_error(
                 interpreter,
                 "__bool__ did not return a boolean".to_string(),
-            ));
+            )
+            .into());
         }
         Some(b) => b.get_value(),
     };
@@ -131,14 +138,14 @@ impl Eval for ElifStmt {
     fn eval(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
         eval_elif(interpreter, *self).map(|_| None)
     }
 
     fn eval_with_state(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
         let result = self.eval(interpreter.clone());
         {
             let mut lock = interpreter.sem_context.lock().unwrap();
@@ -169,8 +176,7 @@ fn parse_elif(
     tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<ElifStmt>> {
-    // idx + 1 is the index of the next token after 'elif'
-    if idx + 1 >= tokens.len() {
+    if idx >= tokens.len() {
         return None;
     }
 
@@ -191,7 +197,7 @@ fn parse_elif(
 /// if the condition is truthy.
 ///
 /// [`SemState`]: crate::eval::SemState
-fn eval_elif(interpreter: Arc<Interpreter>, elif_stmt: ElifStmt) -> Result<(), Arc<dyn PyValue>> {
+fn eval_elif(interpreter: Arc<Interpreter>, elif_stmt: ElifStmt) -> Result<(), PyError> {
     match interpreter
         .sem_context
         .lock()
@@ -206,7 +212,8 @@ fn eval_elif(interpreter: Arc<Interpreter>, elif_stmt: ElifStmt) -> Result<(), A
         None => Err(error::get_syntax_error(
             interpreter.clone(),
             String::from("An elif statement evaluated without a preceding if statement"),
-        )),
+        )
+        .into()),
         Some(false) => {
             let cond = expr::eval_expr(interpreter.clone(), elif_stmt.condition)?;
             let func = cond.get_binding(interpreter.clone(), "__bool__")?;
@@ -218,7 +225,8 @@ fn eval_elif(interpreter: Arc<Interpreter>, elif_stmt: ElifStmt) -> Result<(), A
                     return Err(error::get_type_error(
                         interpreter.clone(),
                         "__bool__ did not return a boolean".to_string(),
-                    ));
+                    )
+                    .into());
                 }
                 Some(b) => b.get_value(),
             };
@@ -256,7 +264,7 @@ impl Eval for ElseStmt {
     fn eval(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
         eval_else(interpreter, *self).map(|_| None)
     }
 }
@@ -280,8 +288,7 @@ fn parse_else(
     tokens: &[TokenNode],
     idx: usize,
 ) -> Option<ParseResult<ElseStmt>> {
-    // idx + 1 is the index of the next token after 'else'
-    if idx + 1 >= tokens.len() {
+    if idx >= tokens.len() {
         return None;
     }
 
@@ -298,7 +305,7 @@ fn parse_else(
 
 /// Evaluates an [`ElseStmt`]: executes the body block if the last evaluated `if` condition was
 /// false.
-fn eval_else(interpreter: Arc<Interpreter>, else_stmt: ElseStmt) -> Result<(), Arc<dyn PyValue>> {
+fn eval_else(interpreter: Arc<Interpreter>, else_stmt: ElseStmt) -> Result<(), PyError> {
     let last_cond = interpreter
         .sem_context
         .lock()
@@ -311,7 +318,8 @@ fn eval_else(interpreter: Arc<Interpreter>, else_stmt: ElseStmt) -> Result<(), A
             return Err(error::get_syntax_error(
                 interpreter.clone(),
                 String::from("An else statement evaluated without a preceding if statement"),
-            ));
+            )
+            .into());
         }
     };
 

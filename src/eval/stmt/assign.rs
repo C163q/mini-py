@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     Interpreter,
+    error::PyError,
     eval::{
         Eval, Parse, ParseResult,
         basic::ast::LValue,
@@ -28,8 +29,10 @@ impl Eval for Assign {
     fn eval(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
-    ) -> Result<Option<Arc<dyn PyValue>>, Arc<dyn PyValue>> {
-        eval_assign(interpreter, *self).map(|_| None)
+    ) -> Result<Option<Arc<dyn PyValue>>, PyError> {
+        eval_assign(interpreter, *self)
+            .map(|_| None)
+            .map_err(PyError::new_exception)
     }
 }
 
