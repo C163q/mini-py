@@ -28,7 +28,12 @@ pub mod stmt;
 /// Evaluates an AST node and optionally returns a value.
 ///
 /// Returns `Ok(Some(value))` for expressions, `Ok(None)` for statements with no result,
-/// or `Err(exception)` on runtime errors.
+/// or `Err(PyError::Exception(_))` on runtime errors. A `break`/`continue` also travels
+/// through this same `Err` path as `Err(PyError::ControlFlow(_))`; implementors that are not
+/// a loop (e.g. `if`) should just propagate it via `?` rather than handling it — only the
+/// loop that owns the body (e.g. [`WhileStmt`]) is expected to catch it.
+///
+/// [`WhileStmt`]: stmt::ast::WhileStmt
 pub trait Eval: Send + Sync {
     fn eval(
         self: Box<Self>,
@@ -41,6 +46,7 @@ pub trait Eval: Send + Sync {
     /// Prefer this over calling [`eval`] directly so that stale state from a previous statement
     /// does not leak into the next one.
     ///
+    /// [`SemState`]: sem::SemState
     /// [`eval`]: Eval::eval
     fn eval_with_state(
         self: Box<Self>,
@@ -213,6 +219,15 @@ fn eval_line_with_indent<T>(
     eval_line_from_token(interpreter, &lex_tokens.tokens)
 }
 
+/// Parses and evaluates `tokens`, rejecting a `break`/`continue` that is not inside a loop.
+///
+/// [`parse_and_eval_line`] turns a bare `break`/`continue` into `Err(PyError::ControlFlow(_))`
+/// unconditionally, since at that point it has no way to know whether it is currently inside a
+/// loop body. This function is the single place that checks [`SemState::in_loop`] and converts
+/// an out-of-loop `break`/`continue` into a proper [`SyntaxError`].
+///
+/// [`SemState::in_loop`]: sem::SemState::in_loop
+/// [`SyntaxError`]: crate::types::error::get_syntax_error
 fn eval_line_from_token(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],

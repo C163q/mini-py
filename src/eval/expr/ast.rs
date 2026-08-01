@@ -514,7 +514,7 @@ impl PowExpr {
     }
 }
 
-/// Function params to call: <param1>, <param2>, ...
+/// Function params to call: \<param1>, \<param2>, ...
 #[derive(Debug, Clone)]
 pub struct FuncRParams {
     pub positional: Vec<Expr>,
@@ -526,7 +526,7 @@ impl FuncRParams {
     }
 }
 
-/// Function call expression: <func>(<params>)
+/// Function call expression: \<func>(\<params>)
 #[derive(Debug, Clone)]
 pub struct FuncCallExpr {
     pub func: Box<PrimaryExpr>,

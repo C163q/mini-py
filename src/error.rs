@@ -52,6 +52,16 @@ impl Display for InterpreterError {
 
 impl Error for InterpreterError {}
 
+/// A `break` or `continue` that is propagating out of a loop body.
+///
+/// This is carried inside [`PyError`] so that `break`/`continue` can be threaded up through
+/// [`Eval::eval`] using the same `Result::Err` path as exceptions, without having to add a
+/// separate return channel to every `eval` implementation. The statement that owns the loop
+/// (e.g. [`WhileStmt`]) is responsible for catching this variant and turning it into actual
+/// control flow; every other caller should let it propagate.
+///
+/// [`Eval::eval`]: crate::eval::Eval::eval
+/// [`WhileStmt`]: crate::eval::stmt::ast::WhileStmt
 #[derive(Debug, Clone, Copy)]
 pub enum PyControlFlow {
     Break,
@@ -67,7 +77,18 @@ impl Display for PyControlFlow {
     }
 }
 
+/// The error type returned by [`Eval::eval`].
+///
+/// Wraps two unrelated reasons an evaluation can fail to produce a value: an actual Python
+/// exception ([`PyError::Exception`]), or a `break`/`continue` ([`PyError::ControlFlow`]) that
+/// still needs to travel up to its enclosing loop. Bundling both into one error type lets
+/// `break`/`continue` reuse `?` through ordinary statement evaluation instead of a bespoke
+/// return type; callers that are not a loop should propagate this value unchanged rather than
+/// inspecting it, so that it reaches the loop that can actually handle it.
+///
 /// TODO: add InterpreterError to PyError
+///
+/// [`Eval::eval`]: crate::eval::Eval::eval
 #[derive(Debug, Clone)]
 pub enum PyError {
     ControlFlow(PyControlFlow),
@@ -91,6 +112,11 @@ impl PyError {
         Self::Exception(exception)
     }
 
+    /// Returns the wrapped exception, or `None` if this is a [`PyError::ControlFlow`].
+    ///
+    /// Useful at the boundary between the interpreter core and its callers (e.g. the REPL),
+    /// which only ever expect to see exceptions — a `break`/`continue` reaching that boundary
+    /// means it escaped its loop and should have been rejected earlier as a syntax error.
     pub fn into_exception(self) -> Option<Arc<dyn PyValue>> {
         match self {
             Self::Exception(v) => Some(v),

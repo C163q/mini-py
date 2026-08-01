@@ -52,7 +52,7 @@ impl Parse for BreakStmt {
 
 /// Attempts to parse `break` from `tokens` starting at `idx`.
 ///
-/// Returns `None` if the token sequence does not match a `continue`.
+/// Returns `None` if the token sequence does not match a `break`.
 fn parse_break(
     interpreter: Arc<Interpreter>,
     tokens: &[TokenNode],

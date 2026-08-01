@@ -32,6 +32,12 @@ impl Eval for WhileStmt {
         eval_while(interpreter, *self).map(|_| None)
     }
 
+    /// Marks [`SemState::in_loop`] before running the loop and restores its previous value
+    /// afterwards, so that `break`/`continue` are only accepted while a statement is nested
+    /// inside this loop's body — including inside a `while` nested further inside it, which is
+    /// why the previous value is saved and restored rather than just cleared.
+    ///
+    /// [`SemState::in_loop`]: crate::eval::sem::SemState::in_loop
     fn eval_with_state(
         self: Box<Self>,
         interpreter: Arc<Interpreter>,
@@ -92,7 +98,11 @@ fn parse_while(
     None
 }
 
-/// Evaluates an [`WhileStmt`]: evaluates the condition.
+/// Evaluates a [`WhileStmt`]: repeatedly evaluates the condition and runs the body while it is
+/// truthy.
+///
+/// A `break` raised from the body stops the loop; a `continue` skips the rest of the current
+/// iteration and re-evaluates the condition. Any other error propagates to the caller.
 fn eval_while(interpreter: Arc<Interpreter>, while_stmt: WhileStmt) -> Result<(), PyError> {
     loop {
         let cond = expr::eval_expr(interpreter.clone(), while_stmt.condition.clone())?;

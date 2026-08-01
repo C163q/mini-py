@@ -2,14 +2,19 @@ use crate::lexer::indent::{IndentHistory, LineIndent, OwnedLineIndent};
 
 /// Runtime state passed between successive statements during evaluation.
 ///
-/// Currently tracks only whether the most recent `if` condition was true or false, so that a
-/// following `else` branch can decide whether to execute.
+/// Tracks whether the most recent `if` condition was true or false, so that a following
+/// `else` branch can decide whether to execute, and whether the statement currently being
+/// evaluated is (directly or through nested blocks) inside a loop body, so that a bare
+/// `break`/`continue` can be rejected as a [`SyntaxError`] when it is not.
+///
+/// [`SyntaxError`]: crate::types::error::get_syntax_error
 #[derive(Debug, Clone)]
 pub struct SemState {
     /// `None` — the previous statement was not an `if`.
     /// `Some(true)` — the previous `if` condition was true (body was executed).
     /// `Some(false)` — the previous `if` condition was false (body was skipped).
     pub last_if_result: Option<bool>,
+    /// `true` while evaluating a statement nested (at any depth) inside a loop's body.
     pub in_loop: bool,
 }
 
@@ -27,9 +32,14 @@ impl SemState {
         }
     }
 
+    /// Clears the per-statement state (`last_if_result`) while leaving `in_loop` untouched.
+    ///
+    /// `in_loop` is deliberately not reset here: it is scoped to a loop body, not a single
+    /// statement, and is instead saved/restored around [`WhileStmt`]'s `eval_with_state`.
+    ///
+    /// [`WhileStmt`]: crate::eval::stmt::ast::WhileStmt
     pub fn reset(&mut self) {
         self.last_if_result = None;
-        // self.in_loop = self.in_loop;
     }
 }
 

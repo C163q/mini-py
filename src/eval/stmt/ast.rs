@@ -90,8 +90,25 @@ impl WhileStmt {
     }
 }
 
+/// A `continue` statement.
+///
+/// Unlike `if`/`elif`/`else`/`while`, this carries no data and has no [`Eval`] implementation
+/// of its own: recognizing it is enough for the caller to turn it directly into
+/// `Err(PyError::new_continue())`, which the enclosing [`WhileStmt`] catches to skip to the
+/// next iteration.
+///
+/// [`Eval`]: crate::eval::Eval
+/// [`WhileStmt`]: WhileStmt
 #[derive(Debug, Clone, Copy)]
 pub struct ContinueStmt;
 
+/// A `break` statement.
+///
+/// Unlike `if`/`elif`/`else`/`while`, this carries no data and has no [`Eval`] implementation
+/// of its own: recognizing it is enough for the caller to turn it directly into
+/// `Err(PyError::new_break())`, which the enclosing [`WhileStmt`] catches to stop the loop.
+///
+/// [`Eval`]: crate::eval::Eval
+/// [`WhileStmt`]: WhileStmt
 #[derive(Debug, Clone, Copy)]
 pub struct BreakStmt;
